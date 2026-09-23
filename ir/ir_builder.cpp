@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "ir_builder.h"
 
 #include "../util/util_hash.h"
@@ -11,6 +13,35 @@ Builder::Builder() {
 
 Builder::~Builder() {
 
+}
+
+
+Builder::TempRewriteScope::TempRewriteScope(Builder& builder)
+: m_builder(builder) {
+  auto [a, b] = builder.getDeclarations();
+
+  for (auto iter = a; iter != b; iter++) {
+    if (iter->getOpCode() != OpCode::eDclTmp)
+      continue;
+
+    auto& uses = builder.m_ops.at(iter->getDef()).uses;
+    auto end = std::remove_if(uses.begin(), uses.end(), [&] (SsaDef use) {
+      auto code = builder.getOp(use).getOpCode();
+      return code == OpCode::eTmpLoad || code == OpCode::eTmpStore;
+    });
+    uses.resize(std::distance(uses.begin(), end));
+  }
+}
+
+
+Builder::TempRewriteScope::~TempRewriteScope() {
+#ifndef NDEBUG
+  for (const auto& op : m_builder) {
+    dxbc_spv_assert(op.getOpCode() != OpCode::eDclTmp);
+    dxbc_spv_assert(op.getOpCode() != OpCode::eTmpLoad);
+    dxbc_spv_assert(op.getOpCode() != OpCode::eTmpStore);
+  }
+#endif
 }
 
 
