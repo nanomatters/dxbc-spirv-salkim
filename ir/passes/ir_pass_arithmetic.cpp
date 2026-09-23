@@ -2050,9 +2050,6 @@ std::pair<bool, Builder::iterator> ArithmeticPass::selectMergeBinaryOp(Builder::
    * least one side of the selection can be constant-folded. */
   SsaDef selectCond = { };
 
-  auto aOp = Op(op->getOpCode(), op->getType()).setFlags(op->getFlags());
-  auto bOp = Op(op->getOpCode(), op->getType()).setFlags(op->getFlags());
-
   bool optimizePattern = true;
 
   for (uint32_t i = 0u; i < op->getOperandCount(); i++) {
@@ -2084,9 +2081,6 @@ std::pair<bool, Builder::iterator> ArithmeticPass::selectMergeBinaryOp(Builder::
 
     if (selectCond != cond.getDef())
       return std::make_pair(false, ++op);
-
-    aOp.addOperand(m_builder.getOpForOperand(arg, 1u).getDef());
-    bOp.addOperand(m_builder.getOpForOperand(arg, 2u).getDef());
   }
 
   if (!optimizePattern) {
@@ -2094,12 +2088,24 @@ std::pair<bool, Builder::iterator> ArithmeticPass::selectMergeBinaryOp(Builder::
     bool bIsConstant = true;
 
     for (uint32_t i = 0u; i < op->getOperandCount(); i++) {
-      aIsConstant = aIsConstant && m_builder.getOpForOperand(aOp, i).isConstant();
-      bIsConstant = bIsConstant && m_builder.getOpForOperand(bOp, i).isConstant();
+      const auto& arg = m_builder.getOpForOperand(*op, i);
+      aIsConstant = aIsConstant && m_builder.getOpForOperand(arg, 1u).isConstant();
+      bIsConstant = bIsConstant && m_builder.getOpForOperand(arg, 2u).isConstant();
     }
 
     if (!aIsConstant && !bIsConstant)
       return std::make_pair(false, ++op);
+  }
+
+  /* Most instructions do not match. Construct replacements only after all
+   * eligibility checks, including whether merging the selects is worthwhile. */
+  auto aOp = Op(op->getOpCode(), op->getType()).setFlags(op->getFlags());
+  auto bOp = Op(op->getOpCode(), op->getType()).setFlags(op->getFlags());
+
+  for (uint32_t i = 0u; i < op->getOperandCount(); i++) {
+    const auto& arg = m_builder.getOpForOperand(*op, i);
+    aOp.addOperand(m_builder.getOpForOperand(arg, 1u).getDef());
+    bOp.addOperand(m_builder.getOpForOperand(arg, 2u).getDef());
   }
 
   auto aDef = m_builder.addBefore(op->getDef(), std::move(aOp));
