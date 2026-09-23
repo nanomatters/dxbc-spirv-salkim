@@ -375,6 +375,48 @@ void testIrBuilderRewriteStorage() {
 }
 
 
+void testIrBuilderRemoveStorage() {
+  Builder builder;
+
+  for (uint32_t count : { 4u, 32u }) {
+    Type type;
+    Op constant(OpCode::eConstant);
+    for (uint32_t i = 0u; i < count; i++) {
+      type.addStructMember(ScalarType::eU32);
+      constant.addOperand(i);
+    }
+    constant.setType(type);
+    auto value = builder.add(constant);
+    Op use = Op::Drain(type, value);
+    for (uint32_t i = 0u; i < count; i++) use.addOperand(value);
+    auto def = builder.add(std::move(use));
+    auto next = builder.add(Op::Return());
+    builder.setCursor(def);
+    ok(builder.remove(def) == next);
+    ok(!builder.getOp(def));
+    ok(!builder.getUseCount(value));
+    checkIrBuilderUses(builder);
+
+    /* Erasing a constant must still remove the separate interning entry. */
+    builder.remove(value);
+    auto again = builder.add(constant);
+    ok(builder.getOp(again).isEquivalent(constant));
+    ok(builder.add(constant) == again);
+    auto undef = builder.makeUndef(type);
+    builder.remove(undef);
+    ok(builder.getOp(builder.makeUndef(type)).isUndef());
+  }
+
+  /* Removing self-use updates metadata, not the operation being read. */
+  auto label = builder.add(Op::Label());
+  auto phi = builder.add(Op::Phi(ScalarType::eU32));
+  builder.rewriteOp(phi, Op::Phi(ScalarType::eU32).addPhi(label, phi));
+  builder.remove(phi);
+  ok(!builder.getUseCount(label));
+  checkIrBuilderUses(builder);
+}
+
+
 void testIrBuilder() {
   RUN_TEST(testIrBuilderEmpty);
   RUN_TEST(testIrBuilderInsertCode);
@@ -382,6 +424,7 @@ void testIrBuilder() {
   RUN_TEST(testIrBuilderConstants);
   RUN_TEST(testIrBuilderUses);
   RUN_TEST(testIrBuilderRewriteStorage);
+  RUN_TEST(testIrBuilderRemoveStorage);
 }
 
 }
