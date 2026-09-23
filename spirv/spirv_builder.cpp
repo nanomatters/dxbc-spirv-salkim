@@ -1297,11 +1297,11 @@ void SpirvBuilder::emitDclInputTarget(const ir::Op& op) {
 uint32_t SpirvBuilder::getDescriptorArrayIndex(const ir::Op& op) {
   const auto& dclOp = m_builder.getOpForOperand(op, 0u);
 
-  if (getDescriptorArraySize(dclOp) == 1u)
-    return 0u; /* no array */
-
   if (op.getFlags() & ir::OpFlag::eNonUniform)
     enableCapability(spv::CapabilityShaderNonUniform);
+
+  if (getDescriptorArraySize(dclOp) == 1u)
+    return 0u; /* no array */
 
   return getIdForDef(ir::SsaDef(op.getOperand(1u)));
 }
