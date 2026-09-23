@@ -90,7 +90,7 @@ SsaDef Builder::addAfter(SsaDef ref, Op op) {
 
 
 SsaDef Builder::remove(SsaDef def) {
-  auto op = getOp(def);
+  const auto& op = getOp(def);
 
   dxbc_spv_assert(op);
 
