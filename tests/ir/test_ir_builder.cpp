@@ -342,12 +342,46 @@ void testIrBuilderUses() {
 }
 
 
+void testIrBuilderRewriteStorage() {
+  Builder builder;
+  auto a = builder.makeConstant(1u);
+  auto b = builder.makeConstant(2u);
+  auto def = builder.add(Op::Drain(ScalarType::eU32, a));
+
+  /* Exercise both inline and allocated operand/type storage, including
+   * replacing a large operation with a small one. */
+  for (uint32_t count : { 2u, 32u, 3u, 64u }) {
+    Type type;
+    Op replacement(OpCode::eCompositeConstruct);
+    for (uint32_t i = 0u; i < count; i++) {
+      type.addStructMember(ScalarType::eU32);
+      replacement.addOperand(i & 1u ? b : a);
+    }
+    replacement.setType(type).setFlags(OpFlag::ePrecise);
+    Op expected = replacement;
+    builder.rewriteOp(def, std::move(replacement));
+    ok(!replacement);
+    ok(builder.getOp(def).isEquivalent(expected));
+    ok(builder.getOp(def).getDef() == def);
+    ok(builder.getOp(def).getType() == type);
+    checkIrBuilderUses(builder);
+
+    /* Passing the stored operation itself must remain safe. The parameter
+     * is copied before replacing the destination. */
+    builder.rewriteOp(def, builder.getOp(def));
+    ok(builder.getOp(def).isEquivalent(expected));
+    checkIrBuilderUses(builder);
+  }
+}
+
+
 void testIrBuilder() {
   RUN_TEST(testIrBuilderEmpty);
   RUN_TEST(testIrBuilderInsertCode);
   RUN_TEST(testIrBuilderReorderCode);
   RUN_TEST(testIrBuilderConstants);
   RUN_TEST(testIrBuilderUses);
+  RUN_TEST(testIrBuilderRewriteStorage);
 }
 
 }

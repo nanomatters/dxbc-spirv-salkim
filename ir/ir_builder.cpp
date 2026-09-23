@@ -120,7 +120,7 @@ void Builder::rewriteOp(SsaDef def, Op op) {
 
   addUses(def, op);
 
-  dstOp = op;
+  dstOp = std::move(op);
   dstOp.setSsaDef(def);
 }
 
