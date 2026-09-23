@@ -70,8 +70,12 @@ public:
    *  operands. */
   bool deserializeOp(Op& op, SsaDef def);
 
-  /** Deserializes remaining binary into builder. */
+  /** Deserializes remaining binary into builder, replacing its contents. */
   bool deserialize(Builder& builder);
+
+  /** Deserializes into a freshly constructed builder without replacing its
+   *  storage. The builder must not have been populated or copied. */
+  bool deserializeFresh(Builder& builder);
 
   /** Checks whether the end has been reached */
   bool atEnd() const {
