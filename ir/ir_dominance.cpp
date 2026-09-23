@@ -7,11 +7,13 @@ namespace dxbc_spv::ir {
 DominanceGraph::DominanceGraph(const Builder& builder)
 : m_builder(builder) {
   SsaDef block = { };
+  uint64_t instructionOrder = 0u;
 
   for (const auto& op : builder) {
     switch (op.getOpCode()) {
       case OpCode::eLabel: {
         block = op.getDef();
+        instructionOrder = 0u;
 
         if (!blockHasPredecessors(block))
           m_startNodes.push_back(block);
@@ -44,6 +46,8 @@ DominanceGraph::DominanceGraph(const Builder& builder)
         node.blockDef = block;
       } break;
     }
+
+    m_nodeInfos[op.getDef()].instructionOrder = instructionOrder++;
   }
 
   initLinks();
@@ -111,10 +115,18 @@ bool DominanceGraph::defDominates(SsaDef a, SsaDef b) const {
   if (aBlock != bBlock)
     return dominates(aBlock, bBlock);
 
-  while (b != a && b != bBlock)
-    b = m_builder.getPrev(b);
+  return m_nodeInfos.at(a).instructionOrder <= m_nodeInfos.at(b).instructionOrder;
+}
 
-  return b == a;
+
+void DominanceGraph::notifyMoveBeforeTerminator(SsaDef def, SsaDef block) {
+  auto terminator = getBlockTerminator(block);
+  dxbc_spv_assert(m_builder.getNext(def) == terminator);
+  dxbc_spv_assert(m_builder.getOp(def).getOpCode() != OpCode::eLabel);
+
+  auto& node = m_nodeInfos[def];
+  node.blockDef = block;
+  node.instructionOrder = m_nodeInfos[terminator].instructionOrder++;
 }
 
 

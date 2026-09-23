@@ -5,6 +5,7 @@ test_files = [
 
   'ir/test_ir_builder.cpp',
   'ir/test_ir_cse.cpp',
+  'ir/test_ir_dominance.cpp',
   'ir/test_ir_input_map.cpp',
   'ir/test_ir_op.cpp',
   'ir/test_ir_serialize.cpp',

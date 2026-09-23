@@ -78,8 +78,8 @@ bool CsePass::run() {
           if (dom) {
             auto terminator = m_dom.getBlockTerminator(dom);
 
-            m_dom.setBlockForDef(i->getDef(), dom);
             m_builder.reorderBefore(terminator, i->getDef(), i->getDef());
+            m_dom.notifyMoveBeforeTerminator(i->getDef(), dom);
             next = m_builder.rewriteDef(iter->getDef(), i->getDef());
             break;
           }
