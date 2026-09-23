@@ -1424,7 +1424,7 @@ void SpirvBuilder::emitDescriptorLoad(const ir::Op& op) {
     auto resourceId = getIdForDef(dclOp.getDef());
     auto indexId = getDescriptorArrayIndex(op);
 
-    auto storageClass = op.getType() == ir::ScalarType::eCbv
+    auto storageClass = op.getType() == ir::ScalarType::eCbv && !cbvAsSsbo(dclOp)
       ? spv::StorageClassUniform
       : spv::StorageClassStorageBuffer;
 
