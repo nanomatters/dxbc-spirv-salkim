@@ -6,7 +6,10 @@
 
 namespace dxbc_spv::ir {
 
-/** Dominance graph. */
+/** Snapshot of control flow and instruction order. Instructions may be
+ *  removed, or moved to a block's end with notifyMoveBeforeTerminator.
+ *  Registering inserted instructions falls back to list order. Other
+ *  changes to instruction order or control flow require rebuilding. */
 class DominanceGraph {
 
 public:
@@ -55,7 +58,12 @@ public:
   void setBlockForDef(SsaDef def, SsaDef block) {
     dxbc_spv_assert(!block || m_builder.getOp(block).getOpCode() == OpCode::eLabel);
     m_nodeInfos[def].blockDef = block;
+    m_instructionOrderValid = false;
   }
+
+  /* Updates instruction order after moving an existing instruction directly
+   * before a block's terminator. The control flow must remain unchanged. */
+  void notifyMoveBeforeTerminator(SsaDef def, SsaDef block);
 
   /* Queries terminator instruction for a given block. */
   SsaDef getBlockTerminator(SsaDef def) const {
@@ -68,6 +76,8 @@ private:
   struct NodeInfo {
     /* Block that any given instruction belongs to */
     SsaDef blockDef = { };
+    /* Position within the block, independent of recycled SSA IDs. */
+    uint64_t instructionOrder = 0u;
 
     struct {
       /* Termination instruction */
@@ -92,6 +102,8 @@ private:
   };
 
   const Builder& m_builder;
+
+  bool m_instructionOrderValid = true;
 
   std::vector<BlockInfo> m_blocks;
 
