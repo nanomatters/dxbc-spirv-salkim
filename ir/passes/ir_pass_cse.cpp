@@ -6,7 +6,8 @@
 namespace dxbc_spv::ir {
 
 CsePass::CsePass(Builder& builder, const Options& options)
-: m_builder(builder), m_options(options), m_dom(builder) {
+: m_builder(builder), m_options(options), m_dom(builder),
+  m_defs(0u, OpHash { builder }, OpEq { builder }) {
 
 }
 
@@ -25,8 +26,6 @@ bool CsePass::run() {
 
 
 bool CsePass::resolveDuplicateInstructions() {
-  std::unordered_multiset<Op, OpHash, OpEq> defs;
-
   bool progress = false;
   auto iter = m_builder.getCode().first;
 
@@ -40,13 +39,13 @@ bool CsePass::resolveDuplicateInstructions() {
 
     if (opType & CseOpFlag::eCanDeduplicate) {
       bool isTrivial = isTrivialOp(*iter);
-      auto [a, b] = defs.equal_range(*iter);
+      auto [a, b] = m_defs.equal_range(iter->getDef());
 
       SsaDef next = { };
 
       for (auto i = a; i != b; i++) {
-        if (m_dom.defDominates(i->getDef(), iter->getDef())) {
-          next = m_builder.rewriteDef(iter->getDef(), i->getDef());
+        if (m_dom.defDominates(*i, iter->getDef())) {
+          next = m_builder.rewriteDef(iter->getDef(), *i);
           break;
         }
 
@@ -54,7 +53,7 @@ bool CsePass::resolveDuplicateInstructions() {
          * dominating both instructions, relocate it to that block */
         if (isTrivial) {
           auto dom = m_dom.getClosestCommonDominator(
-            m_dom.getBlockForDef(i->getDef()),
+            m_dom.getBlockForDef(*i),
             m_dom.getBlockForDef(iter->getDef()));
 
           /* If the new block post-dominates a loop header but not the corresponding
@@ -88,9 +87,9 @@ bool CsePass::resolveDuplicateInstructions() {
           if (dom) {
             auto terminator = m_dom.getBlockTerminator(dom);
 
-            m_builder.reorderBefore(terminator, i->getDef(), i->getDef());
-            m_dom.notifyMoveBeforeTerminator(i->getDef(), dom);
-            next = m_builder.rewriteDef(iter->getDef(), i->getDef());
+            m_builder.reorderBefore(terminator, *i, *i);
+            m_dom.notifyMoveBeforeTerminator(*i, dom);
+            next = m_builder.rewriteDef(iter->getDef(), *i);
             break;
           }
         }
@@ -102,7 +101,7 @@ bool CsePass::resolveDuplicateInstructions() {
         continue;
       }
 
-      defs.insert(*iter);
+      m_defs.insert(iter->getDef());
     } else if (iter->getOpCode() == OpCode::eLabel) {
       /* For phi processing */
       blockList.push_back(iter->getDef());
@@ -130,6 +129,10 @@ bool CsePass::resolveDuplicateInstructions() {
 
     ++iter;
   }
+
+  /* Phi elimination can rewrite operands of previously indexed operations.
+   * Discard the table before its hash inputs can change. */
+  m_defs.clear();
 
   /* Eliminate redundant phi within each block. */
   for (auto block : blockList) {
@@ -194,7 +197,8 @@ bool CsePass::runPass(Builder& builder, const Options& options) {
 }
 
 
-size_t CsePass::OpHash::operator () (const Op& op) const {
+size_t CsePass::OpHash::operator () (SsaDef def) const {
+  const auto& op = builder.getOp(def);
   /* Ignore the definition, hash everything else */
   size_t hash = uint32_t(op.getOpCode());
   hash = util::hash_combine(hash, uint8_t(op.getFlags()));
