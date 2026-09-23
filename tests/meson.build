@@ -3,6 +3,7 @@ subdir('api')
 test_files = [
   'test_main.cpp',
 
+  'ir/test_ir_arithmetic.cpp',
   'ir/test_ir_builder.cpp',
   'ir/test_ir_cse.cpp',
   'ir/test_ir_dominance.cpp',
