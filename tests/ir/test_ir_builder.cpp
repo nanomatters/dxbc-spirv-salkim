@@ -417,6 +417,31 @@ void testIrBuilderRemoveStorage() {
 }
 
 
+void testIrBuilderLiteralOperands() {
+  Builder builder;
+  auto a = builder.makeConstant(1u);
+  auto b = builder.makeConstant(2u);
+  auto c = builder.makeConstant(3u);
+  /* The alignment literal deliberately equals an existing SSA ID. */
+  auto load = builder.add(Op::BufferLoad(ScalarType::eU32, a, b, a.getId()));
+  builder.rewriteDef(a, c);
+  ok(SsaDef(builder.getOp(load).getOperand(0u)) == c);
+  ok(uint32_t(builder.getOp(load).getOperand(2u)) == a.getId());
+  checkIrBuilderUses(builder);
+
+  /* Rewriting changes the boundary. It must be cached per operation, not
+   * across rewrites. Label literals follow a variable number of SSA args. */
+  builder.rewriteOp(load, Op::LabelSelection(b));
+  ok(builder.getOp(load).getFirstLiteralOperandIndex() == 1u);
+  ok(!builder.getUseCount(c));
+  checkIrBuilderUses(builder);
+  builder.rewriteOp(load, Op::Label());
+  ok(!builder.getOp(load).getFirstLiteralOperandIndex());
+  ok(!builder.getUseCount(b));
+  checkIrBuilderUses(builder);
+}
+
+
 void testIrBuilder() {
   RUN_TEST(testIrBuilderEmpty);
   RUN_TEST(testIrBuilderInsertCode);
@@ -425,6 +450,7 @@ void testIrBuilder() {
   RUN_TEST(testIrBuilderUses);
   RUN_TEST(testIrBuilderRewriteStorage);
   RUN_TEST(testIrBuilderRemoveStorage);
+  RUN_TEST(testIrBuilderLiteralOperands);
 }
 
 }
