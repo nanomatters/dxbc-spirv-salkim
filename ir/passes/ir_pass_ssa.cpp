@@ -16,8 +16,13 @@ SsaConstructionPass::~SsaConstructionPass() {
 
 
 void SsaConstructionPass::runPass() {
-  resolveTempLoadStore();
-  removeTempDecls();
+  /* These users are consumed by this pass. Removing each one separately
+   * would repeatedly compact the temporary declaration's large use list. */
+  {
+    Builder::TempRewriteScope temps(m_builder);
+    resolveTempLoadStore();
+    removeTempDecls();
+  }
   resolveTrivialPhi();
 }
 

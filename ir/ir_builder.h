@@ -351,6 +351,24 @@ public:
 
 private:
 
+  friend class SsaConstructionPass;
+
+  /* Only SSA construction may detach temporary load/store users. It must
+   * remove those instructions and declarations before leaving this scope.
+   * Until the loads and stores are gone, do not query or otherwise rewrite
+   * their declarations' use lists. Debug users and other lists stay intact. */
+  class TempRewriteScope {
+  public:
+    explicit TempRewriteScope(Builder& builder);
+    ~TempRewriteScope();
+
+    TempRewriteScope(const TempRewriteScope&) = delete;
+    TempRewriteScope& operator = (const TempRewriteScope&) = delete;
+
+  private:
+    Builder& m_builder;
+  };
+
   Container<OpMetadata> m_ops;
 
   std::unordered_set<Op, ConstantHash, ConstantEq> m_constants;
