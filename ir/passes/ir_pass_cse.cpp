@@ -142,6 +142,7 @@ bool CsePass::resolveDuplicateInstructions() {
       while (phiToTest != phi) {
         if (m_builder.getOp(phi).isEquivalent(m_builder.getOp(phiToTest))) {
           next = m_builder.rewriteDef(phi, phiToTest);
+          progress = true;
           break;
         }
 
