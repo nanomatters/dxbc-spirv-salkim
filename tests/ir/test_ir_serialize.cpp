@@ -9,7 +9,7 @@ namespace dxbc_spv::tests::ir {
 
 using namespace dxbc_spv::ir;
 
-void testIrSerializeBuilder(const Builder& srcBuilder) {
+void testIrSerializeBuilder(const Builder& srcBuilder, bool fresh) {
   Serializer serializer(srcBuilder);
 
   std::vector<uint8_t> data(serializer.computeSerializedSize());
@@ -18,7 +18,7 @@ void testIrSerializeBuilder(const Builder& srcBuilder) {
   Builder newBuilder;
 
   Deserializer deserializer(data.data(), data.size());
-  ok(deserializer.deserialize(newBuilder));
+  ok(fresh ? deserializer.deserializeFresh(newBuilder) : deserializer.deserialize(newBuilder));
   ok(deserializer.atEnd());
 
   /* Verify that instructions are in the same order and operands are the same. */
@@ -71,8 +71,91 @@ void testIrSerializeBuilder(const Builder& srcBuilder) {
 }
 
 
+std::vector<uint8_t> serializeBuilder(const Builder& builder) {
+  Serializer serializer(builder);
+  std::vector<uint8_t> data(serializer.computeSerializedSize());
+  ok(serializer.serialize(data.data(), data.size()));
+  return data;
+}
+
+
+void testIrDeserializeReset() {
+  Builder source;
+  auto one = source.makeConstant(1u);
+  auto two = source.makeConstant(2u);
+  auto sum = source.add(Op::IAdd(ScalarType::eU32, one, two));
+  source.add(Op::Drain(ScalarType::eU32, sum, one));
+  auto data = serializeBuilder(source);
+
+  /* The fresh path keeps the existing allocation. */
+  Builder fresh;
+  const auto* nullOp = &fresh.getOp(SsaDef());
+  ok(Deserializer(data.data(), data.size()).deserializeFresh(fresh));
+  ok(&fresh.getOp(SsaDef()) == nullOp);
+  ok(serializeBuilder(fresh) == data);
+  ok(fresh.getUseCount(one) == 2u);
+
+  /* Reset constants, use lists, cursor and multiple pages of old storage.
+   * A copy sharing the old storage must remain unchanged. */
+  Builder reused;
+  for (uint32_t i = 0u; i < 5000u; i++)
+    reused.makeConstant(i);
+  reused.setCursor(reused.add(Op::Label()));
+  Builder shared = reused;
+  auto sharedData = serializeBuilder(shared);
+
+  ok(Deserializer(data.data(), data.size()).deserialize(reused));
+  ok(serializeBuilder(reused) == data);
+  ok(serializeBuilder(shared) == sharedData);
+  ok(reused.getDefCount() == source.getDefCount());
+  ok(reused.getUseCount(one) == 2u);
+  ok(!reused.setCursor(SsaDef()));
+  ok(reused.makeConstant(1u) == one);
+
+  /* An empty instruction list can still have a free list and old SSA IDs. */
+  Builder removed;
+  auto a = removed.makeConstant(10u);
+  auto b = removed.makeConstant(20u);
+  removed.remove(a);
+  removed.remove(b);
+  ok(removed.begin() == removed.end());
+  ok(removed.getDefCount() > 1u);
+  ok(Deserializer(data.data(), data.size()).deserialize(removed));
+  ok(serializeBuilder(removed) == data);
+
+  /* Even a never-populated builder may share its initial allocation. */
+  Builder empty;
+  Builder emptyCopy = empty;
+  ok(Deserializer(data.data(), data.size()).deserialize(emptyCopy));
+  auto constant = empty.makeConstant(99u);
+  ok(constant == one);
+  ok(serializeBuilder(emptyCopy) == data);
+
+  /* Failure resets the destination as before. Retrying after a partial
+   * decode must not retain instructions or constants from that attempt. */
+  ok(!Deserializer(nullptr, 0u).deserialize(reused));
+  ok(reused.getDefCount() == 1u);
+  ok(reused.begin() == reused.end());
+  ok(!Deserializer(data.data(), data.size() - 1u).deserialize(reused));
+  ok(Deserializer(data.data(), data.size()).deserialize(reused));
+  ok(serializeBuilder(reused) == data);
+
+  Builder failedFresh;
+  ok(!Deserializer(data.data(), data.size() - 1u).deserializeFresh(failedFresh));
+  ok(Deserializer(data.data(), data.size()).deserialize(failedFresh));
+  ok(serializeBuilder(failedFresh) == data);
+
+  auto emptyData = serializeBuilder(Builder());
+  ok(Deserializer(emptyData.data(), emptyData.size()).deserialize(reused));
+  ok(reused.getDefCount() == 1u);
+  ok(reused.begin() == reused.end());
+}
+
+
 void testIrSerialize() {
-  testIrSerializeBuilder(Builder());
+  testIrSerializeBuilder(Builder(), false);
+  testIrSerializeBuilder(Builder(), true);
+  RUN_TEST(testIrDeserializeReset);
 
   Builder builder;
 
@@ -114,7 +197,8 @@ void testIrSerialize() {
   builder.add(Op::Return());
   builder.add(Op::FunctionEnd());
 
-  testIrSerializeBuilder(builder);
+  testIrSerializeBuilder(builder, false);
+  testIrSerializeBuilder(builder, true);
 }
 
 }

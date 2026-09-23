@@ -250,6 +250,12 @@ bool Deserializer::deserializeOp(Op& op, SsaDef def) {
 
 bool Deserializer::deserialize(Builder& builder) {
   builder = Builder();
+  return deserializeFresh(builder);
+}
+
+
+bool Deserializer::deserializeFresh(Builder& builder) {
+  dxbc_spv_assert(builder.getDefCount() == 1u);
 
   uint32_t opCount = 0u;
 
