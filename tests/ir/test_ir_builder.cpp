@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <utility>
 
 #include "../../ir/ir_builder.h"
@@ -255,11 +256,98 @@ void testIrBuilderConstants() {
 }
 
 
+std::vector<SsaDef> getUseDefs(const Builder& builder, SsaDef def) {
+  std::vector<SsaDef> uses;
+  auto [a, b] = builder.getUses(def);
+  for (; a != b; a++) uses.push_back(a->getDef());
+  return uses;
+}
+
+
+void checkIrBuilderUses(const Builder& builder) {
+  std::vector<std::vector<SsaDef>> expected(builder.getDefCount());
+  for (const auto& op : builder) {
+    for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+      auto target = SsaDef(op.getOperand(i));
+      if (!target) continue;
+      ok(bool(builder.getOp(target)));
+      auto& uses = expected.at(target.getId());
+      if (uses.empty() || uses.back() != op.getDef()) uses.push_back(op.getDef());
+    }
+  }
+  for (const auto& op : builder) {
+    auto actual = getUseDefs(builder, op.getDef());
+    auto& wanted = expected.at(op.getDef().getId());
+    std::sort(actual.begin(), actual.end());
+    std::sort(wanted.begin(), wanted.end());
+    ok(actual == wanted);
+    ok(actual.size() == builder.getUseCount(op.getDef()));
+  }
+}
+
+
+void testIrBuilderUses() {
+  Builder builder;
+  auto a = builder.makeConstant(1u);
+  auto b = builder.makeConstant(2u);
+  auto c = builder.makeConstant(3u);
+  auto first = builder.add(Op::Drain(ScalarType::eU32, a, b, a, SsaDef(), b));
+  auto second = builder.add(Op::Drain(ScalarType::eU32, b, b));
+  auto third = builder.addBefore(first, Op::Drain(ScalarType::eU32, a, c, a));
+  auto fourth = builder.addAfter(first, Op::Drain(ScalarType::eU32, a));
+  checkIrBuilderUses(builder);
+  ok(getUseDefs(builder, a) == (std::vector<SsaDef> { first, third, fourth }));
+  ok(getUseDefs(builder, b) == (std::vector<SsaDef> { first, second }));
+
+  /* A rewrite removes all old memberships before adding the new ones. */
+  builder.rewriteOp(first, Op::Drain(ScalarType::eU32, c, b, c, b));
+  checkIrBuilderUses(builder);
+  ok(getUseDefs(builder, b) == (std::vector<SsaDef> { second, first }));
+  builder.rewriteOp(first, Op::Drain(ScalarType::eU32, a, b, a, b));
+  checkIrBuilderUses(builder);
+
+  /* Shared users must not be appended twice. New users retain source order. */
+  builder.rewriteDef(a, b);
+  checkIrBuilderUses(builder);
+  ok(getUseDefs(builder, b) == (std::vector<SsaDef> { second, first, third, fourth }));
+  auto recycled = builder.add(Op::Drain(ScalarType::eU32, b, b));
+  ok(recycled == a);
+  checkIrBuilderUses(builder);
+  builder.remove(first);
+  auto again = builder.add(Op::Drain(ScalarType::eU32, b, c, b));
+  ok(again == first);
+  checkIrBuilderUses(builder);
+
+  /* Long operand lists and high fanout still contain one entry per user. */
+  Op many = Op::Drain(ScalarType::eU32, b);
+  for (uint32_t i = 0u; i < 256u; i++) many.addOperand(i & 1u ? b : c);
+  auto manyDef = builder.add(many);
+  for (uint32_t i = 0u; i < 2048u; i++) builder.add(Op::Drain(ScalarType::eU32, b, c, b));
+  checkIrBuilderUses(builder);
+  builder.rewriteOp(manyDef, Op::Drain(ScalarType::eU32, c, c));
+  checkIrBuilderUses(builder);
+
+  /* Merging a self-referential phi must keep the replacement's self-use. */
+  Builder phis;
+  auto label = phis.add(Op::Label());
+  auto value = phis.makeConstant(0u);
+  auto phi = phis.add(Op::Phi(ScalarType::eU32).addPhi(label, value));
+  phis.rewriteOp(phi, Op::Phi(ScalarType::eU32).addPhi(label, phi));
+  auto replacement = phis.add(Op::Phi(ScalarType::eU32).addPhi(label, phi));
+  auto user = phis.add(Op::Drain(ScalarType::eU32, phi, replacement, phi));
+  checkIrBuilderUses(phis);
+  phis.rewriteDef(phi, replacement);
+  checkIrBuilderUses(phis);
+  ok(getUseDefs(phis, replacement) == (std::vector<SsaDef> { user, replacement }));
+}
+
+
 void testIrBuilder() {
   RUN_TEST(testIrBuilderEmpty);
   RUN_TEST(testIrBuilderInsertCode);
   RUN_TEST(testIrBuilderReorderCode);
   RUN_TEST(testIrBuilderConstants);
+  RUN_TEST(testIrBuilderUses);
 }
 
 }
