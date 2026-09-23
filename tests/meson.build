@@ -22,8 +22,12 @@ if get_option('enable_sm5')
   ]
 endif
 
+if get_option('enable_spirv')
+  test_files += [ 'spirv/test_spirv_builder.cpp' ]
+endif
+
 executable('test_dxbc_spv', files(test_files),
-  link_with   : [ lib_dxbc_spv ],
+  link_with   : [ lib_dxbc_spv, lib_dxbc_spv_test_api ],
   install     : false)
 
 if get_option('enable_spirv')
