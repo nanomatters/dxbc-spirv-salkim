@@ -81,7 +81,7 @@ std::pair<bool, BasicType> PropagateTypesPass::resolveUnknownPhiSelect(const Op&
   /* Check whether all non-constant numeric operands agree on a type for this op */
   BasicType resolvedType = ScalarType::eVoid;
 
-  for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+  for (uint32_t i = 0u, ssaCount = op.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
     const auto& operand = m_builder.getOpForOperand(op, i);
 
     if (!operand.isDeclarative() && operand.getType().isBasicType() &&
@@ -124,7 +124,8 @@ SsaDef PropagateTypesPass::rewriteResolvedOp(const Op& op, BasicType type) {
   Op newOp(op.getOpCode(), type);
   newOp.setFlags(op.getFlags());
 
-  for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+  uint32_t ssaCount = op.getFirstLiteralOperandIndex();
+  for (uint32_t i = 0u; i < ssaCount; i++) {
     auto operand = SsaDef(op.getOperand(i));
 
     const auto& srcOp = m_builder.getOp(operand);
@@ -135,7 +136,7 @@ SsaDef PropagateTypesPass::rewriteResolvedOp(const Op& op, BasicType type) {
     newOp.addOperand(operand);
   }
 
-  for (uint32_t i = op.getFirstLiteralOperandIndex(); i < op.getOperandCount(); i++)
+  for (uint32_t i = ssaCount; i < op.getOperandCount(); i++)
     newOp.addOperand(op.getOperand(i));
 
   /* Insert rewritten op and consume it as the original type to maintain compatibility.
