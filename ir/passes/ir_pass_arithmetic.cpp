@@ -311,7 +311,7 @@ void ArithmeticPass::propagateInvariance(const Op& base) {
 
     m_builder.setOpFlags(next.getDef(), next.getFlags() | OpFlag::eInvariant);
 
-    for (uint32_t i = 0u; i < next.getFirstLiteralOperandIndex(); i++) {
+    for (uint32_t i = 0u, ssaCount = next.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
       const auto& arg = m_builder.getOpForOperand(next, i);
 
       if (!arg.isDeclarative() && !arg.getType().isVoidType())
@@ -378,7 +378,7 @@ Builder::iterator ArithmeticPass::fuseMad(Builder::iterator op) {
 
   std::optional<uint32_t> fmulOperand = { };
 
-  for (uint32_t i = 0u; i < op->getFirstLiteralOperandIndex(); i++) {
+  for (uint32_t i = 0u, ssaCount = op->getFirstLiteralOperandIndex(); i < ssaCount; i++) {
     const auto& operand = m_builder.getOpForOperand(*op, i);
 
     if (operand.getOpCode() == OpCode::eFMul ||
@@ -4857,7 +4857,7 @@ std::pair<bool, Builder::iterator> ArithmeticPass::constantFoldOp(Builder::itera
 
 
 bool ArithmeticPass::allOperandsConstant(const Op& op) const {
-  for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+  for (uint32_t i = 0u, ssaCount = op.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
     if (!m_builder.getOpForOperand(op, i).isConstant())
       return false;
   }

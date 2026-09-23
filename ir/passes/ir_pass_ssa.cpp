@@ -115,7 +115,7 @@ void SsaConstructionPass::insertExitPhi() {
 
         Op op = *iter;
 
-        for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+        for (uint32_t i = 0u, ssaCount = op.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
           auto arg = SsaDef(op.getOperand(i));
           auto& phi = exitPhi.at(arg);
 

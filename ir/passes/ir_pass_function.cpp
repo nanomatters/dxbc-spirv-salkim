@@ -78,7 +78,7 @@ bool FunctionCleanupPass::removeUnusedParameters() {
     m_builder.getUses(function, uses);
 
     /* Remove unused parameters from the declaration */
-    for (uint32_t i = 0u; i < oldFunctionOp.getFirstLiteralOperandIndex(); i++) {
+    for (uint32_t i = 0u, ssaCount = oldFunctionOp.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
       auto param = SsaDef(oldFunctionOp.getOperand(i));
 
       if (usedParams.find({ function, param }) != usedParams.end())
@@ -124,7 +124,7 @@ bool FunctionCleanupPass::removeUnusedParameters() {
       dxbc_spv_assert(function == SsaDef(oldCall.getOperand(0u)));
       newCall.addOperand(function);
 
-      for (uint32_t i = 0u; i < oldFunctionOp.getFirstLiteralOperandIndex(); i++) {
+      for (uint32_t i = 0u, ssaCount = oldFunctionOp.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
         auto paramDef = SsaDef(oldFunctionOp.getOperand(i));
         auto paramValue = SsaDef(oldCall.getOperand(i + 1u));
 
