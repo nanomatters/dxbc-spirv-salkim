@@ -53,9 +53,75 @@ void testIrCsePhiProgress(bool duplicate) {
 }
 
 
+void testIrCseDependentUsers() {
+  Builder builder;
+  test_api::setupTestFunction(builder, ShaderStage::eCompute);
+  builder.add(Op::Label());
+  auto input = builder.add(Op::Drain(ScalarType::eU32, builder.makeConstant(0u)));
+  std::vector<std::pair<SsaDef, SsaDef>> results;
+  /* Force several table rehashes while rewrites make later users identical. */
+  for (uint32_t i = 1u; i <= 512u; i++) {
+    auto value = builder.makeConstant(i);
+    auto a = builder.add(Op::IMul(ScalarType::eU32, input, value));
+    auto b = builder.add(Op::IMul(ScalarType::eU32, input, value));
+    auto x = builder.add(Op::IAdd(ScalarType::eU32, a, a));
+    auto y = builder.add(Op::IAdd(ScalarType::eU32, b, b));
+    auto sink = builder.add(Op::Drain(ScalarType::eU32, x, y));
+    results.emplace_back(sink, x);
+  }
+  builder.add(Op::Return());
+  ok(CsePass::runPass(builder, { }));
+  for (auto [sink, value] : results) {
+    ok(SsaDef(builder.getOp(sink).getOperand(0u)) == value);
+    ok(SsaDef(builder.getOp(sink).getOperand(1u)) == value);
+  }
+  ok(!CsePass::runPass(builder, { }));
+}
+
+
+void testIrCseLoopPhiRewrite() {
+  Builder builder;
+  test_api::setupTestFunction(builder, ShaderStage::eCompute);
+  auto start = builder.add(Op::Label());
+  auto condition = builder.add(Op::Drain(ScalarType::eBool, builder.makeConstant(true)));
+  auto header = builder.add(Op::Label());
+  auto body = builder.add(Op::Label());
+  auto end = builder.add(Op::Label());
+  builder.rewriteOp(header, Op::LabelLoop(end, body));
+  builder.addBefore(header, Op::Branch(header));
+  auto zero = builder.makeConstant(0u);
+  auto one = builder.makeConstant(1u);
+  auto phiA = builder.addBefore(body, Op::Phi(ScalarType::eU32).addPhi(start, zero));
+  auto phiB = builder.addBefore(body, Op::Phi(ScalarType::eU32).addPhi(start, zero));
+  auto outA = builder.addBefore(body, Op::IMul(ScalarType::eU32, phiA, phiA));
+  auto outB = builder.addBefore(body, Op::IMul(ScalarType::eU32, phiB, phiB));
+  builder.addBefore(body, Op::BranchConditional(condition, body, end));
+  auto nextA = builder.addBefore(end, Op::IAdd(ScalarType::eU32, phiA, one));
+  auto nextB = builder.addBefore(end, Op::IAdd(ScalarType::eU32, phiA, one));
+  builder.addBefore(end, Op::Branch(header));
+  builder.rewriteOp(phiA, Op::Phi(ScalarType::eU32).addPhi(start, zero).addPhi(body, nextA));
+  builder.rewriteOp(phiB, Op::Phi(ScalarType::eU32).addPhi(start, zero).addPhi(body, nextB));
+  auto sink = builder.add(Op::Drain(ScalarType::eU32, outA, outB));
+  builder.add(Op::Return());
+
+  /* Deduplicating the increments first changes backward phi operands.
+   * Merging the phis then changes operations already visited by CSE. */
+  ok(CsePass::runPass(builder, { }));
+  ok(!builder.getOp(nextB));
+  ok(!builder.getOp(phiB));
+  ok(SsaDef(builder.getOp(outB).getOperand(0u)) == phiA);
+  ok(CsePass::runPass(builder, { }));
+  ok(SsaDef(builder.getOp(sink).getOperand(0u)) == outA);
+  ok(SsaDef(builder.getOp(sink).getOperand(1u)) == outA);
+  ok(!CsePass::runPass(builder, { }));
+}
+
+
 void testIrCse() {
   RUN_TEST(testIrCsePhiProgress, false);
   RUN_TEST(testIrCsePhiProgress, true);
+  RUN_TEST(testIrCseDependentUsers);
+  RUN_TEST(testIrCseLoopPhiRewrite);
 }
 
 }
