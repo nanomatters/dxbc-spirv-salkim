@@ -118,12 +118,7 @@ void Builder::rewriteOp(SsaDef def, Op op) {
   for (uint32_t i = 0u; i < dstOp.getFirstLiteralOperandIndex(); i++)
     removeUse(SsaDef(dstOp.getOperand(i)), def);
 
-  for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
-    auto target = SsaDef(op.getOperand(i));
-    dxbc_spv_assert(!target || getOp(target));
-
-    addUse(target, def);
-  }
+  addUses(def, op);
 
   dstOp = op;
   dstOp.setSsaDef(def);
@@ -139,13 +134,18 @@ SsaDef Builder::rewriteDef(SsaDef oldDef, SsaDef newDef) {
 
     for (auto u : oldMetadata.uses) {
       auto& op = m_ops.at(u).op;
+      bool alreadyUsesNew = false;
 
       for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+        alreadyUsesNew |= SsaDef(op.getOperand(i)) == newDef;
         if (SsaDef(op.getOperand(i)) == SsaDef(oldDef))
           op.setOperand(i, Operand(SsaDef(newDef)));
       }
 
-      addUse(newDef, u);
+      /* Check the user's operands, not the destination's potentially large
+       * use list. Preserve the existing order when merging shared users. */
+      if (!alreadyUsesNew)
+        m_ops.at(newDef).uses.push_back(u);
     }
   }
 
@@ -219,12 +219,7 @@ std::pair<SsaDef, bool> Builder::writeOp(Op&& op) {
   dstOp = std::move(op);
   dstOp.setSsaDef(def);
 
-  for (uint32_t i = 0u; i < dstOp.getFirstLiteralOperandIndex(); i++) {
-    auto target = SsaDef(dstOp.getOperand(i));
-    dxbc_spv_assert(!target || getOp(target));
-
-    addUse(target, def);
-  }
+  addUses(def, dstOp);
 
   if (dstOp.isConstant() || dstOp.isUndef())
     m_constants.insert(dstOp);
@@ -233,18 +228,20 @@ std::pair<SsaDef, bool> Builder::writeOp(Op&& op) {
 }
 
 
-void Builder::addUse(SsaDef target, SsaDef user) {
-  if (!target)
-    return;
+void Builder::addUses(SsaDef def, const Op& op) {
+  for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+    auto target = SsaDef(op.getOperand(i));
+    if (!target)
+      continue;
 
-  auto& metadata = m_ops.at(target);
+    dxbc_spv_assert(getOp(target));
+    auto& uses = m_ops.at(target).uses;
 
-  for (auto u : metadata.uses) {
-    if (u == user)
-      return;
+    /* The instruction is new, or its previous uses have all been removed.
+     * Repeated operands can only have appended this same user at the end. */
+    if (uses.empty() || uses.back() != def)
+      uses.push_back(def);
   }
-
-  metadata.uses.push_back(user);
 }
 
 
