@@ -11,6 +11,7 @@ void testIrDominance();
 void testIrInputMap();
 void testIrOp();
 void testIrSerialize();
+void testIrSsa();
 void testIrType();
 void testIrTypePropagation();
 
@@ -22,6 +23,7 @@ void runTests() {
   RUN_TEST(testIrCse);
   RUN_TEST(testIrDominance);
   RUN_TEST(testIrSerialize);
+  RUN_TEST(testIrSsa);
   RUN_TEST(testIrTypePropagation);
   RUN_TEST(testIrInputMap);
 }
