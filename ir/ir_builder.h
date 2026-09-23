@@ -362,7 +362,8 @@ private:
 
   std::pair<SsaDef, bool> writeOp(Op&& op);
 
-  void addUse(SsaDef target, SsaDef user);
+  /* Registers an instruction which is not currently in any use list. */
+  void addUses(SsaDef def, const Op& op);
 
   void removeUse(SsaDef target, SsaDef user);
 
