@@ -79,7 +79,7 @@ void RemoveUnusedPass::run() {
 
     removeOp(op.getDef());
 
-    for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+    for (uint32_t i = 0u, ssaCount = op.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
       auto operand = SsaDef(op.getOperand(i));
 
       if (canRemoveOp(m_builder.getOp(operand)))
