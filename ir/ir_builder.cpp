@@ -94,7 +94,7 @@ SsaDef Builder::remove(SsaDef def) {
 
   dxbc_spv_assert(op);
 
-  for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++)
+  for (uint32_t i = 0u, ssaCount = op.getFirstLiteralOperandIndex(); i < ssaCount; i++)
     removeUse(SsaDef(op.getOperand(i)), def);
 
   if (op.isConstant() || op.isUndef())
@@ -115,7 +115,7 @@ void Builder::rewriteOp(SsaDef def, Op op) {
   dxbc_spv_assert(op && !op.isConstant());
   dxbc_spv_assert(dstOp && !dstOp.isConstant());
 
-  for (uint32_t i = 0u; i < dstOp.getFirstLiteralOperandIndex(); i++)
+  for (uint32_t i = 0u, ssaCount = dstOp.getFirstLiteralOperandIndex(); i < ssaCount; i++)
     removeUse(SsaDef(dstOp.getOperand(i)), def);
 
   addUses(def, op);
@@ -136,7 +136,7 @@ SsaDef Builder::rewriteDef(SsaDef oldDef, SsaDef newDef) {
       auto& op = m_ops.at(u).op;
       bool alreadyUsesNew = false;
 
-      for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+      for (uint32_t i = 0u, ssaCount = op.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
         alreadyUsesNew |= SsaDef(op.getOperand(i)) == newDef;
         if (SsaDef(op.getOperand(i)) == SsaDef(oldDef))
           op.setOperand(i, Operand(SsaDef(newDef)));
@@ -229,7 +229,7 @@ std::pair<SsaDef, bool> Builder::writeOp(Op&& op) {
 
 
 void Builder::addUses(SsaDef def, const Op& op) {
-  for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+  for (uint32_t i = 0u, ssaCount = op.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
     auto target = SsaDef(op.getOperand(i));
     if (!target)
       continue;

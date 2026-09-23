@@ -203,7 +203,7 @@ std::pair<bool, Builder::iterator> CleanupControlFlowPass::handleLabel(Builder::
       if (iter->getOpCode() == OpCode::eLabel) {
         Op labelOp = *iter;
 
-        for (uint32_t i = 0u; i < labelOp.getFirstLiteralOperandIndex(); i++) {
+        for (uint32_t i = 0u, ssaCount = labelOp.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
           if (SsaDef(labelOp.getOperand(i)) == op->getDef())
             labelOp.setOperand(i, block);
         }

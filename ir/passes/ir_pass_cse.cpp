@@ -63,7 +63,7 @@ bool CsePass::run() {
                 if (m_dom.postDominates(dom, loop) && !m_dom.postDominates(dom, merge)) {
                   bool canRelocate = true;
 
-                  for (uint32_t i = 0u; i < iter->getFirstLiteralOperandIndex(); i++)
+                  for (uint32_t i = 0u, ssaCount = iter->getFirstLiteralOperandIndex(); i < ssaCount; i++)
                     canRelocate = canRelocate && m_dom.defDominates(SsaDef(iter->getOperand(i)), loop);
 
                   dom = canRelocate ? pred : SsaDef();

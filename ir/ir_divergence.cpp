@@ -187,7 +187,7 @@ Scope DivergenceAnalysis::determineScope(const Op& op) {
       /* Function could return divergent results even for uniform inputs */
       auto scope = getUniformScopeForDef(func.getDef());
 
-      for (uint32_t i = 1u; i < op.getFirstLiteralOperandIndex(); i++) {
+      for (uint32_t i = 1u, ssaCount = op.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
         auto paramScope = getUniformScopeForDef(SsaDef(op.getOperand(i)));
 
         if (funcInfo.tainted)
@@ -427,7 +427,7 @@ Scope DivergenceAnalysis::determineScope(const Op& op) {
 Scope DivergenceAnalysis::determineScopeForArgs(const Op& op) {
   Scope scope = Scope::eGlobal;
 
-  for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++)
+  for (uint32_t i = 0u, ssaCount = op.getFirstLiteralOperandIndex(); i < ssaCount; i++)
     scope = std::min(scope, getUniformScopeForDef(SsaDef(op.getOperand(i))));
 
   return scope;

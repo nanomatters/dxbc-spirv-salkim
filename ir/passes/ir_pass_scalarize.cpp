@@ -390,6 +390,7 @@ Builder::iterator ScalarizePass::scalarizeOp(Builder::iterator op, uint32_t dstS
   /* Insert any new instructions after the original one */
   m_builder.setCursor(op->getDef());
 
+  uint32_t ssaCount = op->getFirstLiteralOperandIndex();
   for (auto dstIndex = 0u, srcIndex = 0u; dstIndex < dstType.getVectorSize(); dstIndex += dstStep, srcIndex += srcStep) {
     if (dstIndex + dstStep > dstType.getVectorSize()) {
       auto divisor = std::min(dstStep, srcStep);
@@ -401,10 +402,10 @@ Builder::iterator ScalarizePass::scalarizeOp(Builder::iterator op, uint32_t dstS
     Op splitOp(op->getOpCode(), BasicType(dstType.getBaseType(), dstStep));
     splitOp.setFlags(op->getFlags());
 
-    for (uint32_t i = 0u; i < op->getFirstLiteralOperandIndex(); i++)
+    for (uint32_t i = 0u; i < ssaCount; i++)
       splitOp.addOperand(extractOperandComponents(SsaDef(op->getOperand(i)), srcIndex, srcStep));
 
-    for (uint32_t i = op->getFirstLiteralOperandIndex(); i < op->getOperandCount(); i++)
+    for (uint32_t i = ssaCount; i < op->getOperandCount(); i++)
       splitOp.addOperand(op->getOperand(i));
 
     result.push_back(m_builder.add(std::move(splitOp)));

@@ -179,7 +179,7 @@ void DerivativePass::relocateInstructions() {
 
     const auto& op = m_builder.getOp(def);
 
-    for (uint32_t j = 0u; j < op.getFirstLiteralOperandIndex(); j++) {
+    for (uint32_t j = 0u, ssaCount = op.getFirstLiteralOperandIndex(); j < ssaCount; j++) {
       const auto& arg = m_builder.getOpForOperand(op, j);
 
       if (!arg || arg.isDeclarative() || arg.getOpCode() == OpCode::eFunction)
@@ -223,7 +223,7 @@ void DerivativePass::relocateInstructions() {
     /* Rewrite op to use reloacted operands in the same block */
     auto op = m_builder.getOp(entry.def);
 
-    for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+    for (uint32_t i = 0u, ssaCount = op.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
       DefBlockKey key = { SsaDef(op.getOperand(i)), entry.block };
 
       auto argEntry = relocatedOps.find(key);
@@ -286,7 +286,7 @@ bool DerivativePass::canHoistDerivativeOp(const Op& derivOp, SsaDef dstBlock) co
     } [[fallthrough]];
 
     case OpCode::eImageComputeLod: {
-      for (uint32_t i = 0u; i < derivOp.getFirstLiteralOperandIndex(); i++)
+      for (uint32_t i = 0u, ssaCount = derivOp.getFirstLiteralOperandIndex(); i < ssaCount; i++)
         queue.push_back(SsaDef(derivOp.getOperand(i)));
     } break;
 
@@ -337,7 +337,7 @@ bool DerivativePass::canHoistDerivativeOp(const Op& derivOp, SsaDef dstBlock) co
         if (!allowComplexInput || !m_divergence->functionIsPure(m_builder.getOpForOperand(arg, 0u).getDef()))
           return false;
 
-        for (uint32_t i = 1u; i < arg.getFirstLiteralOperandIndex(); i++)
+        for (uint32_t i = 1u, ssaCount = arg.getFirstLiteralOperandIndex(); i < ssaCount; i++)
           queue.push_back(SsaDef(arg.getOperand(i)));
       } break;
 
@@ -367,7 +367,7 @@ bool DerivativePass::canHoistDerivativeOp(const Op& derivOp, SsaDef dstBlock) co
         if (!allowComplexInput || !isReadOnlyResource(m_builder.getOpForOperand(arg, 0u)))
           return false;
 
-        for (uint32_t i = 0u; i < arg.getFirstLiteralOperandIndex(); i++)
+        for (uint32_t i = 0u, ssaCount = arg.getFirstLiteralOperandIndex(); i < ssaCount; i++)
           queue.push_back(SsaDef(arg.getOperand(i)));
       } break;
 
@@ -386,7 +386,7 @@ bool DerivativePass::canHoistDerivativeOp(const Op& derivOp, SsaDef dstBlock) co
       case OpCode::ePushDataLoad:
       case OpCode::eConstantLoad:
       case OpCode::eInputLoad: {
-        for (uint32_t i = 1u; i < arg.getFirstLiteralOperandIndex(); i++)
+        for (uint32_t i = 1u, ssaCount = arg.getFirstLiteralOperandIndex(); i < ssaCount; i++)
           queue.push_back(SsaDef(arg.getOperand(i)));
       } break;
 
@@ -504,7 +504,7 @@ bool DerivativePass::canHoistDerivativeOp(const Op& derivOp, SsaDef dstBlock) co
       case OpCode::eConsumeAs:
       case OpCode::eCast:
       case OpCode::eDrain: {
-        for (uint32_t i = 0u; i < arg.getFirstLiteralOperandIndex(); i++)
+        for (uint32_t i = 0u, ssaCount = arg.getFirstLiteralOperandIndex(); i < ssaCount; i++)
           queue.push_back(SsaDef(arg.getOperand(i)));
       } break;
 

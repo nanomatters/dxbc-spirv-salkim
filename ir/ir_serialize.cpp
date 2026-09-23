@@ -220,7 +220,8 @@ bool Deserializer::deserializeOp(Op& op, SsaDef def) {
   op.setSsaDef(def);
 
   /* Parse SSA operands */
-  for (uint32_t i = 0u; i < op.getFirstLiteralOperandIndex(); i++) {
+  uint32_t ssaCount = op.getFirstLiteralOperandIndex();
+  for (uint32_t i = 0u; i < ssaCount; i++) {
     uint64_t sym = 0u;
 
     if (!readVle(sym))
@@ -235,7 +236,7 @@ bool Deserializer::deserializeOp(Op& op, SsaDef def) {
   }
 
   /* Parse literal operands */
-  for (uint32_t i = op.getFirstLiteralOperandIndex(); i < op.getOperandCount(); i++) {
+  for (uint32_t i = ssaCount; i < op.getOperandCount(); i++) {
     uint64_t sym = 0u;
 
     if (!readVle(sym))

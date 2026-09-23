@@ -1012,7 +1012,7 @@ SsaDef LowerIoPass::lowerSpecConstantsToCbv(uint32_t regSpace, uint32_t regIndex
         auto load = m_builder.addBefore(use, Op::BufferLoad(specType,
           descriptor, address, byteSize(specType.getBaseType())));
 
-        for (uint32_t i = 0u; i < useOp.getFirstLiteralOperandIndex(); i++) {
+        for (uint32_t i = 0u, ssaCount = useOp.getFirstLiteralOperandIndex(); i < ssaCount; i++) {
           if (SsaDef(useOp.getOperand(i)) == spec)
             useOp.setOperand(i, load);
         }
