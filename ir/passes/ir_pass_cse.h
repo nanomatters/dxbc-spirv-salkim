@@ -66,14 +66,20 @@ private:
   SsaDef  m_functionDef = { };
 
   struct OpHash {
-    size_t operator () (const Op& op) const;
+    const Builder& builder;
+    size_t operator () (SsaDef def) const;
   };
 
   struct OpEq {
-    size_t operator () (const Op& a, const Op& b) const {
-      return a.isEquivalent(b);
+    const Builder& builder;
+    bool operator () (SsaDef a, SsaDef b) const {
+      return builder.getOp(a).isEquivalent(builder.getOp(b));
     }
   };
+
+  /* The main walk only rewrites later users or phi operands. Indexed
+   * operations remain unchanged, including when moved to another block. */
+  std::unordered_multiset<SsaDef, OpHash, OpEq> m_defs;
 
   bool resolveOverlappingLoads(ResourceKind kind, SsaDef descriptor);
 
