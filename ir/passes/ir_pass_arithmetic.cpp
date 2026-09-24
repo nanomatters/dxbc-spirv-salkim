@@ -3228,7 +3228,7 @@ std::pair<bool, Builder::iterator> ArithmeticPass::resolveIdentityCompareOp(Buil
       dxbc_spv_assert(a.getType().isScalarType());
       int64_t bitCount = 8u * a.getType().getBaseType(0u).byteSize();
 
-      if (getConstantAsSint(b, 0u) >= bitCount) {
+      if (b.isConstant() && getConstantAsSint(b, 0u) >= bitCount) {
         m_builder.rewriteDef(op->getDef(), m_builder.makeConstant(op->getOpCode() == OpCode::eINe));
         return std::make_pair(true, op);
       }
