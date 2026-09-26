@@ -104,4 +104,37 @@ void testDxbcWriteExtraOperands() {
   testInstructionRoundTrip({ 0x03000068u, 7u, 0u });
 }
 
+
+void testDxbcWriteOpcodeExtensions() {
+  /* sample r0, r0, t0, s0. Zero offsets may be omitted from the encoding. */
+  std::vector<uint32_t> plain = {
+    (9u << 24) | uint32_t(OpCode::eSample),
+    0x001000f2u, 0u, 0x00100e46u, 0u,
+    0x00107e46u, 0u, 0x00106000u, 0u };
+  testInstructionRoundTrip(plain);
+
+  auto zeroOffsets = plain;
+  zeroOffsets[0u] = (10u << 24) | ExtendedTokenBit | uint32_t(OpCode::eSample);
+  zeroOffsets.insert(zeroOffsets.begin() + 1u, SampleControlToken(0, 0, 0).asToken());
+  testInstructionRoundTrip(zeroOffsets, plain);
+
+  auto offsets = zeroOffsets;
+  offsets[1u] = SampleControlToken(1, -2, 3).asToken();
+  testInstructionRoundTrip(offsets);
+
+  /* Omitting one extension must preserve the rest of the extension chain. */
+  auto dimensions = ResourceDimToken(ResourceDim::eTexture2D, 0u).asToken();
+  auto types = ResourceTypeToken(SampledType::eFloat, SampledType::eFloat,
+    SampledType::eFloat, SampledType::eFloat).asToken();
+  auto chain = zeroOffsets;
+  chain[0u] = (12u << 24) | ExtendedTokenBit | uint32_t(OpCode::eSample);
+  chain[1u] |= ExtendedTokenBit;
+  chain.insert(chain.begin() + 2u, { dimensions | ExtendedTokenBit, types });
+
+  auto expected = chain;
+  expected[0u] = (11u << 24) | ExtendedTokenBit | uint32_t(OpCode::eSample);
+  expected.erase(expected.begin() + 1u);
+  testInstructionRoundTrip(chain, expected);
+}
+
 }
