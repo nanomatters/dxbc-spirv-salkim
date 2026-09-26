@@ -103,7 +103,8 @@ private:
 
   CbvInfo getCbvCopyMapping(const Op& op);
 
-  SsaDef emitScratchCbvFunction(SsaDef def, const CbvInfo& baseStore, uint32_t baseIndex, uint32_t storeMask);
+  /* A zero sparse mask means that every array element has been initialized. */
+  SsaDef emitScratchCbvFunction(SsaDef def, const CbvInfo& baseStore, uint32_t baseIndex, uint32_t sparseMask);
 
   SsaDef extractCbvArrayIndex(const Op& op);
 
