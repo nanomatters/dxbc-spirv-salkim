@@ -1653,6 +1653,33 @@ bool Operand::write(util::ByteWriter& writer, const Instruction& op) const {
         return false;
     }
 
+    /* Immediate registers carry literal words instead of indices. */
+    auto type = getRegisterType();
+
+    if (type == RegisterType::eImm32 || type == RegisterType::eImm64) {
+      uint32_t dwordCount;
+
+      switch (getComponentCount()) {
+        case ComponentCount::e1Component:
+          dwordCount = type == RegisterType::eImm64 ? 2u : 1u;
+          break;
+
+        case ComponentCount::e4Component:
+          dwordCount = 4u;
+          break;
+
+        default:
+          return false;
+      }
+
+      for (uint32_t i = 0u; i < dwordCount; i++) {
+        if (!writer.write(m_imm[i]))
+          return false;
+      }
+
+      return true;
+    }
+
     /* Emit index operands */
     for (uint32_t i = 0u; i < getIndexDimensions(); i++) {
       auto type = getIndexType(i);
