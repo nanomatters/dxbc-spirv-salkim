@@ -92,4 +92,16 @@ void testDxbcWriteCustomData() {
   testInstructionRoundTrip(large);
 }
 
+
+void testDxbcWriteExtraOperands() {
+  /* dcl_function_table ft0 = { fb3, fb4 }. */
+  testInstructionRoundTrip({ 0x05000091u, 0u, 2u, 3u, 4u });
+
+  /* A longer table, including a zero-valued body index. */
+  testInstructionRoundTrip({ 0x07000091u, 7u, 4u, 0u, 1u, 3u, 9u });
+
+  /* Preserve padding retained by the parser as an extra word. */
+  testInstructionRoundTrip({ 0x03000068u, 7u, 0u });
+}
+
 }
