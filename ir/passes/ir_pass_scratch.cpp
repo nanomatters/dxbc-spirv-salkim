@@ -1139,7 +1139,7 @@ std::pair<SsaDef, uint64_t> CleanupScratchPass::extractBaseAndOffset(const Op& o
 
   if (op.getOpCode() == OpCode::eIAdd) {
     const auto& a = m_builder.getOpForOperand(op, 0u);
-    const auto& b = m_builder.getOpForOperand(op, 0u);
+    const auto& b = m_builder.getOpForOperand(op, 1u);
 
     auto [aBase, aOffset] = extractBaseAndOffset(a);
     auto [bBase, bOffset] = extractBaseAndOffset(b);
