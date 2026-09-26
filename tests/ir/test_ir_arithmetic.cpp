@@ -227,6 +227,39 @@ void testIrArithmeticInvalidBitRanges() {
 }
 
 
+void testIrArithmeticTruncPattern() {
+  for (bool useAnd : { false, true }) {
+    for (bool reversed : { false, true }) {
+      for (uint32_t variant = 0u; variant < 3u; variant++) {
+        Builder builder;
+        test_api::setupTestFunction(builder, ShaderStage::eCompute);
+        builder.add(Op::Label());
+        auto x = builder.add(Op::Drain(ScalarType::eF32, builder.makeConstant(-1.5f)));
+        auto other = builder.add(Op::Drain(ScalarType::eF32, builder.makeConstant(0.5f)));
+        auto zero = builder.makeConstant(0.0f);
+        auto fract = builder.add(Op::FFract(ScalarType::eF32, x));
+        auto fractCmp = builder.add(Op(useAnd ? OpCode::eFGt : OpCode::eFLe, ScalarType::eBool)
+          .addOperands(fract, zero));
+        auto valueCmp = builder.add(Op(useAnd ? OpCode::eFLt : OpCode::eFGe, ScalarType::eBool)
+          .addOperands(variant == 1u ? other : x, variant == 2u ? builder.makeConstant(1.0f) : zero));
+        auto cond = builder.add(Op(useAnd ? OpCode::eBAnd : OpCode::eBOr, ScalarType::eBool)
+          .addOperands(reversed ? valueCmp : fractCmp, reversed ? fractCmp : valueCmp));
+        auto floor = builder.add(Op::FRound(ScalarType::eF32, x, RoundMode::eNegativeInf));
+        auto ceil = builder.add(Op::FAdd(ScalarType::eF32, floor, builder.makeConstant(1.0f)));
+        auto select = builder.add(Op::Select(ScalarType::eF32, cond, useAnd ? ceil : floor, useAnd ? floor : ceil));
+        auto sink = builder.add(Op::Drain(ScalarType::eF32, select));
+        builder.add(Op::Return());
+        while (ArithmeticPass::runPass(builder, { })) { }
+        const auto& result = builder.getOpForOperand(builder.getOp(sink), 0u);
+        ok(result.getOpCode() == (variant ? OpCode::eSelect : OpCode::eFRound));
+        if (!variant)
+          ok(RoundMode(result.getOperand(1u)) == RoundMode::eZero);
+      }
+    }
+  }
+}
+
+
 void testIrArithmetic() {
   /* Matching selects, non-select on either side, mismatched conditions,
    * shared selects, and shared selects with a constant branch. */
@@ -236,6 +269,7 @@ void testIrArithmetic() {
   RUN_TEST(testIrArithmeticIntegerWidths);
   RUN_TEST(testIrArithmeticBitExtractBounds);
   RUN_TEST(testIrArithmeticInvalidBitRanges);
+  RUN_TEST(testIrArithmeticTruncPattern);
 }
 
 }
