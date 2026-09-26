@@ -16,6 +16,7 @@ void testIrScratch();
 void testIrSsa();
 void testIrType();
 void testIrTypePropagation();
+void testIrUtils();
 
 void runTests() {
   RUN_TEST(testIrType);
@@ -30,6 +31,7 @@ void runTests() {
   RUN_TEST(testIrSsa);
   RUN_TEST(testIrTypePropagation);
   RUN_TEST(testIrInputMap);
+  RUN_TEST(testIrUtils);
 }
 
 }
