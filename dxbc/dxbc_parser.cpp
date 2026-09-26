@@ -1637,7 +1637,7 @@ Operand& Operand::addIndex(uint32_t absolute, uint32_t relative) {
 
 
 bool Operand::write(util::ByteWriter& writer, const Instruction& op) const {
-  if (m_info.kind == OperandKind::eImm32) {
+  if (m_info.kind == OperandKind::eImm32 || m_info.kind == OperandKind::eExtra) {
     /* Write a single dword */
     dxbc_spv_assert(getRegisterType() == RegisterType::eImm32);
 
