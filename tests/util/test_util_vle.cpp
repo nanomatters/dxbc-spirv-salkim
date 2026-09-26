@@ -53,9 +53,31 @@ void testVariableLengthEncodingInvalid() {
 }
 
 
+void testVariableLengthEncodingWide() {
+  std::array<uint8_t, 9u> data = { };
+  for (uint32_t bit = 0u; bit < 64u; bit++) {
+    auto value = uint64_t(1u) << bit;
+    for (auto symbol : { value, 0u - value, value - 1u }) {
+      auto size = vle::encodedSize(symbol);
+      ok(vle::encode(symbol, data.data(), size) == size);
+      uint64_t decoded = ~symbol;
+      ok(vle::decode(decoded, data.data(), size) == size);
+      ok(decoded == symbol);
+      ok(!vle::encode(symbol, data.data(), size - 1u));
+      if (size == 9u) {
+        ok(data[0u] == 0xffu);
+        for (uint32_t i = 1u; i < 9u; i++)
+          ok(data[i] == uint8_t(symbol >> (8u * (8u - i))));
+      }
+    }
+  }
+}
+
+
 void testVariableLengthEncoding() {
   RUN_TEST(testVariableLengthEncodingBasic);
   RUN_TEST(testVariableLengthEncodingInvalid);
+  RUN_TEST(testVariableLengthEncodingWide);
 }
 
 }
