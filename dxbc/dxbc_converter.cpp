@@ -1702,6 +1702,12 @@ bool Converter::handleBitInsert(ir::Builder& builder, const Instruction& op) {
   auto offset = loadSrcBitCount(builder, op, op.getSrc(1u), dst.getWriteMask());
   auto count = loadSrcBitCount(builder, op, op.getSrc(0u), dst.getWriteMask());
 
+  /* D3D truncates the inserted field at bit 32. SPIR-V instead requires
+   * offset + count to fit in the word, just like bitfield extraction. */
+  auto countType = builder.getOp(count).getType().getBaseType(0u);
+  count = builder.add(ir::Op::UMin(countType, count,
+    builder.add(ir::Op::ISub(countType, makeTypedConstant(builder, countType, 32), offset))));
+
   auto resultDef = builder.add(ir::Op::IBitInsert(
     makeVectorType(scalarType, dst.getWriteMask()),
     base, value, offset, count));
