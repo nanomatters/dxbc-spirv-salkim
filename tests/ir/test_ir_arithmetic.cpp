@@ -314,6 +314,41 @@ void testIrArithmeticTruncPattern() {
 }
 
 
+void testIrArithmeticIntegerIdentity() {
+  for (auto type : { ScalarType::eI8, ScalarType::eI16, ScalarType::eI32, ScalarType::eI64 }) {
+    auto bits = bitWidth(type);
+    auto mask = ~uint64_t(0u) >> (64u - bits);
+    auto sign = uint64_t(1u) << (bits - 1u);
+    for (auto code : { OpCode::eIAdd, OpCode::eISub }) {
+      for (auto constant : { uint64_t(0u), uint64_t(1u), sign - 1u, sign, sign + 1u, mask }) {
+        for (auto input : { uint64_t(0u), uint64_t(123u), sign, mask }) {
+          Builder builder;
+          test_api::setupTestFunction(builder, ShaderStage::eCompute);
+          builder.add(Op::Label());
+          auto makeConstant = [&] (uint64_t value) {
+            return builder.add(Op(OpCode::eConstant, type).addOperand(value & mask));
+          };
+          auto value = builder.add(Op::Drain(type, makeConstant(input)));
+          auto result = builder.add(Op(code, type).addOperands(value, makeConstant(constant)));
+          auto sink = builder.add(Op::Drain(type, result));
+          builder.add(Op::Return());
+
+          /* Keep the input opaque until identity rewriting has run, so the
+           * constant folder cannot hide a host overflow in the rewrite. */
+          while (ArithmeticPass::runPass(builder, { })) { }
+          builder.rewriteDef(value, makeConstant(input));
+          while (ArithmeticPass::runPass(builder, { })) { }
+          const auto& folded = builder.getOpForOperand(builder.getOp(sink), 0u);
+          ok(folded.isConstant());
+          auto expected = code == OpCode::eIAdd ? input + constant : input - constant;
+          ok((uint64_t(folded.getOperand(0u)) & mask) == (expected & mask));
+        }
+      }
+    }
+  }
+}
+
+
 void testIrArithmeticPackedFloatIdentity() {
   const BasicType type(ScalarType::eF16, 2u);
 
@@ -381,6 +416,7 @@ void testIrArithmetic() {
   RUN_TEST(testIrArithmeticFloatCompareDenorm);
   RUN_TEST(testIrArithmeticTruncPattern);
   RUN_TEST(testIrArithmeticPackedFloatIdentity);
+  RUN_TEST(testIrArithmeticIntegerIdentity);
 }
 
 }
