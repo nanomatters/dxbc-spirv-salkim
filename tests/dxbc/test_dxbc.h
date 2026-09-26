@@ -29,6 +29,7 @@ void testDxbcBitInsertRange();
 void testDxbcWriteImmediateOperands();
 void testDxbcWriteCustomData();
 void testDxbcWriteExtraOperands();
+void testDxbcWriteOpcodeExtensions();
 
 void runTests() {
   RUN_TEST(testDxbcTypeToIrType);
@@ -56,6 +57,7 @@ void runTests() {
   RUN_TEST(testDxbcWriteImmediateOperands);
   RUN_TEST(testDxbcWriteCustomData);
   RUN_TEST(testDxbcWriteExtraOperands);
+  RUN_TEST(testDxbcWriteOpcodeExtensions);
 }
 
 }
