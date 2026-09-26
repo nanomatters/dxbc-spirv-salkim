@@ -76,4 +76,20 @@ void testDxbcWriteImmediateOperands() {
     0x05000036u, 0x001000f2u, 0u, 0x00100e46u, 1u });
 }
 
+
+void testDxbcWriteCustomData() {
+  /* A single immediate-constant-buffer entry. */
+  testInstructionRoundTrip({ 0x00001835u, 6u, 1u, 2u, 3u, 4u });
+
+  /* Empty comment and opaque debug-information payload. */
+  testInstructionRoundTrip({ 0x00000035u, 2u });
+  testInstructionRoundTrip({ 0x00000835u, 5u, 0u, 0xffffffffu, 0x0100003eu });
+
+  /* Custom data uses a separate 32-bit length, not the 7-bit opcode field. */
+  std::vector<uint32_t> large = { 0x00001835u, 258u };
+  for (uint32_t i = 0u; i < 256u; i++)
+    large.push_back(0x80000000u | i);
+  testInstructionRoundTrip(large);
+}
+
 }
