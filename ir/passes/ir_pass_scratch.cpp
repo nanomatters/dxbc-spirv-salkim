@@ -239,6 +239,7 @@ bool CleanupScratchPass::promoteScratchCbvCopy(SsaDef def) {
 
   auto baseType = type.getBaseType(0u);
   auto componentCount = baseType.getVectorSize();
+  auto arraySize = type.getArraySize(0u);
 
   /* Mask of array indices written */
   uint32_t storeMask = 0u;
@@ -259,6 +260,9 @@ bool CleanupScratchPass::promoteScratchCbvCopy(SsaDef def) {
         return false;
 
       uint32_t arrayIndex = uint32_t(index.getOperand(0u));
+
+      if (arrayIndex >= arraySize)
+        return false;
 
       if (arrayIndex < MaxSparseSize)
         storeMask |= 1u << arrayIndex;
@@ -299,18 +303,27 @@ bool CleanupScratchPass::promoteScratchCbvCopy(SsaDef def) {
 
   CbvInfo baseStore = { };
   uint32_t baseIndex = 0u;
+  auto storedArraySize = storeInfos.size() / componentCount;
+  bool isSparse = storedArraySize < arraySize;
 
-  if (storeMask)
-    baseIndex = util::tzcnt(storeMask);
+  while (baseIndex < storedArraySize && !storeInfos.at(baseIndex * componentCount).cbv)
+    baseIndex++;
 
-  if (baseIndex >= storeInfos.size())
+  if (baseIndex == storedArraySize)
     return false;
 
-  baseStore = storeInfos.at(baseIndex);
+  baseStore = storeInfos.at(baseIndex * componentCount);
 
-  for (uint32_t i = 0u; i < storeInfos.size() / componentCount; i++) {
-    if (storeMask && !(storeMask & (1u << i)))
+  for (uint32_t i = 0u; i < storedArraySize; i++) {
+    if (!storeInfos.at(componentCount * i).cbv) {
+      /* Whole absent elements may use the sparse mask; partial vectors may not. */
+      for (uint32_t j = 1u; j < componentCount; j++) {
+        if (storeInfos.at(componentCount * i + j).cbv)
+          return false;
+      }
+      isSparse = true;
       continue;
+    }
 
     for (uint32_t j = 0u; j < componentCount; j++) {
       const auto& currStore = storeInfos.at(j + componentCount * i);
@@ -324,6 +337,10 @@ bool CleanupScratchPass::promoteScratchCbvCopy(SsaDef def) {
         return false;
     }
   }
+
+  /* Dense copies need no occupancy mask. Do not truncate larger sparse maps. */
+  if (isSparse && arraySize > MaxSparseSize)
+    return false;
 
   /* Now that we verified that we can map each scratch store to
    * a cbv load, verify that all stores dominate all loads */
@@ -342,7 +359,7 @@ bool CleanupScratchPass::promoteScratchCbvCopy(SsaDef def) {
 
   /* Replace all loads with a call to the helper function,
    * and extract the correct vector component as necessary. */
-  auto function = emitScratchCbvFunction(def, baseStore, baseIndex, storeMask);
+  auto function = emitScratchCbvFunction(def, baseStore, baseIndex, isSparse ? storeMask : 0u);
 
   for (auto load : loads) {
     const auto& loadOp = m_builder.getOp(load);
@@ -450,13 +467,10 @@ CleanupScratchPass::CbvInfo CleanupScratchPass::getCbvCopyMapping(const Op& op) 
 }
 
 
-SsaDef CleanupScratchPass::emitScratchCbvFunction(SsaDef def, const CbvInfo& baseStore, uint32_t baseIndex, uint32_t storeMask) {
+SsaDef CleanupScratchPass::emitScratchCbvFunction(SsaDef def, const CbvInfo& baseStore, uint32_t baseIndex, uint32_t sparseMask) {
   auto type = m_builder.getOp(def).getType();
   auto baseType = type.getBaseType(0u);
   auto componentCount = baseType.getVectorSize();
-
-  /* Check whether store mask is sparse */
-  bool isSparse = util::tzcnt(storeMask + 1u) < type.getArraySize(0u);
 
   /* Build helper function to perform re-mapped CBV loads */
   auto ref = m_builder.getCode().first->getDef();
@@ -486,10 +500,14 @@ SsaDef CleanupScratchPass::emitScratchCbvFunction(SsaDef def, const CbvInfo& bas
       m_builder.add(Op::ULt(ScalarType::eBool, index, m_builder.makeConstant(type.getArraySize(0u))))));
   }
 
-  if (isSparse) {
+  if (sparseMask) {
+    /* Boolean AND does not short-circuit an out-of-range bit extraction. */
+    auto maskIndex = m_builder.add(Op::UMin(ScalarType::eU32, index, m_builder.makeConstant(31u)));
+    isInBounds = m_builder.add(Op::BAnd(ScalarType::eBool, isInBounds,
+      m_builder.add(Op::ULt(ScalarType::eBool, index, m_builder.makeConstant(32u)))));
     isInBounds = m_builder.add(Op::BAnd(ScalarType::eBool, isInBounds,
       m_builder.add(Op::INe(ScalarType::eBool, m_builder.makeConstant(0u),
-        m_builder.add(Op::UBitExtract(ScalarType::eU32, m_builder.makeConstant(storeMask), index, m_builder.makeConstant(1u)))))));
+        m_builder.add(Op::UBitExtract(ScalarType::eU32, m_builder.makeConstant(sparseMask), maskIndex, m_builder.makeConstant(1u)))))));
   }
 
   /* Load CBV descriptor and compute actual offset */
