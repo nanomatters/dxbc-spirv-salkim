@@ -27,6 +27,7 @@ void testDxbcSignatureEncodeOsg1();
 void testDxbcHash();
 void testDxbcBitInsertRange();
 void testDxbcWriteImmediateOperands();
+void testDxbcWriteCustomData();
 
 void runTests() {
   RUN_TEST(testDxbcTypeToIrType);
@@ -52,6 +53,7 @@ void runTests() {
   RUN_TEST(testDxbcHash);
   RUN_TEST(testDxbcBitInsertRange);
   RUN_TEST(testDxbcWriteImmediateOperands);
+  RUN_TEST(testDxbcWriteCustomData);
 }
 
 }
