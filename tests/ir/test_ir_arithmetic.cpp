@@ -1,4 +1,5 @@
 #include "../../ir/passes/ir_pass_arithmetic.h"
+#include "../../ir/passes/ir_pass_scalarize.h"
 
 #include "../api/test_api_common.h"
 #include "../test_common.h"
@@ -313,6 +314,61 @@ void testIrArithmeticTruncPattern() {
 }
 
 
+void testIrArithmeticPackedFloatIdentity() {
+  const BasicType type(ScalarType::eF16, 2u);
+
+  for (auto code : { OpCode::eFAdd, OpCode::eFSub }) {
+    for (bool noSignedZero : { false, true }) {
+      for (float x : { -1.0f, -0.0f, 0.0f, 1.0f }) {
+        for (float y : { -1.0f, -0.0f, 0.0f, 1.0f }) {
+          for (float input : { -2.0f, -0.0f, 0.0f, 2.0f }) {
+            Builder builder;
+            test_api::setupTestFunction(builder, ShaderStage::eCompute);
+            builder.add(Op::Label());
+            auto inputConstant = builder.add(Op(OpCode::eConstant, type)
+              .addOperands(Operand(float16_t(input)), Operand(float16_t(-input))));
+            auto value = builder.add(Op::Drain(type, inputConstant));
+            auto constant = builder.add(Op(OpCode::eConstant, type)
+              .addOperands(Operand(float16_t(x)), Operand(float16_t(y))));
+            auto op = Op(code, type).addOperands(value, constant);
+            if (noSignedZero)
+              op.setFlags(OpFlag::eNoSz);
+            auto sink = builder.add(Op::Drain(type, builder.add(std::move(op))));
+            builder.add(Op::Return());
+
+            /* Retain the packed half vector, as in the real compiler path. */
+            ScalarizePass::runPass(builder, { });
+            while (ArithmeticPass::runPass(builder, { })) { }
+
+            /* Evaluate the result independently: the arithmetic pass does
+             * not constant-fold floating-point addition or subtraction. */
+            auto evaluate = [&] (const auto& self, SsaDef def, uint32_t lane) -> float {
+              const auto& result = builder.getOp(def);
+              if (result.isConstant())
+                return float(float16_t(result.getOperand(lane)));
+              if (result.getOpCode() == OpCode::eDrain)
+                return self(self, SsaDef(result.getOperand(0u)), lane);
+              ok(result.getOpCode() == OpCode::eFAdd || result.getOpCode() == OpCode::eFSub);
+              float a = self(self, SsaDef(result.getOperand(0u)), lane);
+              float b = self(self, SsaDef(result.getOperand(1u)), lane);
+              return result.getOpCode() == OpCode::eFAdd ? a + b : a - b;
+            };
+            for (uint32_t i = 0u; i < 2u; i++) {
+              float lhs = i ? -input : input;
+              float rhs = i ? y : x;
+              auto expected = Operand(float16_t(code == OpCode::eFAdd ? lhs + rhs : lhs - rhs));
+              auto actual = uint16_t(Operand(float16_t(evaluate(evaluate, sink, i))));
+              auto bits = uint16_t(expected);
+              ok(noSignedZero && !(bits & 0x7fffu) ? !(actual & 0x7fffu) : actual == bits);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+
 void testIrArithmetic() {
   /* Matching selects, non-select on either side, mismatched conditions,
    * shared selects, and shared selects with a constant branch. */
@@ -324,6 +380,7 @@ void testIrArithmetic() {
   RUN_TEST(testIrArithmeticInvalidBitRanges);
   RUN_TEST(testIrArithmeticFloatCompareDenorm);
   RUN_TEST(testIrArithmeticTruncPattern);
+  RUN_TEST(testIrArithmeticPackedFloatIdentity);
 }
 
 }

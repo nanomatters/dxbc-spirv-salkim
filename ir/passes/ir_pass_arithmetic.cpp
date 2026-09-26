@@ -2731,19 +2731,16 @@ std::pair<bool, Builder::iterator> ArithmeticPass::resolveIdentityArithmeticOp(B
             auto posOperand = b.getOperand(i);
             auto negOperand = Operand(signBit ^ uint64_t(posOperand));
 
-            isConstantNegative = isConstantNegative || (uint64_t(posOperand) & signBit);
-            isConstantPositive = isConstantPositive || !(uint64_t(posOperand) & signBit);
-
             /* Eliminate addition with signed zero. If we don't care about
-             * signed zeroes anyway, eliminage any addition with zero. */
+             * signed zeroes anyway, eliminate any addition with zero. */
             auto zeroCandidate = uint64_t(isSub ? posOperand : negOperand);
 
             if (getFpFlags(*op) & OpFlag::eNoSz)
               zeroCandidate &= ~signBit;
 
-            if (!zeroCandidate) {
-              isConstantPositive = false;
-              isConstantNegative = false;
+            if (zeroCandidate) {
+              isConstantNegative = isConstantNegative || (uint64_t(posOperand) & signBit);
+              isConstantPositive = isConstantPositive || !(uint64_t(posOperand) & signBit);
             }
 
             constant.addOperand(negOperand);
