@@ -4675,6 +4675,24 @@ std::pair<bool, Builder::iterator> ArithmeticPass::constantFoldCompare(Builder::
   if (!allOperandsConstant(*op))
     return std::make_pair(false, ++op);
 
+  /* Comparing denormals depends on the shader's FP mode, not the host's.
+   * Keep these rare comparisons for the backend rather than folding them
+   * using host floating-point arithmetic. isnan is unaffected. */
+  auto compareType = m_builder.getOpForOperand(*op, 0u).getType().getBaseType(0u);
+  if (compareType.isFloatType() && op->getOpCode() != OpCode::eFIsNan) {
+    auto scalar = compareType.getBaseType();
+    uint32_t mantissaBits = scalar == ScalarType::eF16 ? 10u : scalar == ScalarType::eF32 ? 23u : 52u;
+    auto magnitudeMask = (uint64_t(1u) << (bitWidth(scalar) - 1u)) - 1u;
+    for (uint32_t arg = 0u; arg < op->getOperandCount(); arg++) {
+      const auto& value = m_builder.getOpForOperand(*op, arg);
+      for (uint32_t i = 0u; i < value.getOperandCount(); i++) {
+        auto magnitude = uint64_t(value.getOperand(i)) & magnitudeMask;
+        if (magnitude && magnitude < (uint64_t(1u) << mantissaBits))
+          return std::make_pair(false, ++op);
+      }
+    }
+  }
+
   Op constant(OpCode::eConstant, op->getType());
 
   for (uint32_t i = 0u; i < op->getType().getBaseType(0u).getVectorSize(); i++) {

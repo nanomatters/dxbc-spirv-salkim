@@ -227,6 +227,59 @@ void testIrArithmeticInvalidBitRanges() {
 }
 
 
+void testIrArithmeticFloatCompareDenorm() {
+  for (auto type : { ScalarType::eF16, ScalarType::eF32, ScalarType::eF64 }) {
+    uint32_t mantissaBits = type == ScalarType::eF16 ? 10u : type == ScalarType::eF32 ? 23u : 52u;
+    auto sign = uint64_t(1u) << (bitWidth(type) - 1u);
+    auto minNormal = uint64_t(1u) << mantissaBits;
+    auto infinity = sign - minNormal;
+    for (auto mode : { DenormMode::eFlush, DenormMode::ePreserve }) {
+      for (auto bits : { uint64_t(0u), uint64_t(1u), minNormal - 1u, minNormal, infinity, infinity | 1u }) {
+        for (bool negative : { false, true }) {
+          for (auto code : { OpCode::eFEq, OpCode::eFNe, OpCode::eFLt,
+                            OpCode::eFLe, OpCode::eFGt, OpCode::eFGe, OpCode::eFIsNan }) {
+            Builder builder;
+            auto entry = test_api::setupTestFunction(builder, ShaderStage::eCompute);
+            builder.add(Op::SetFpMode(entry, type, OpFlags(), RoundMode::eNearestEven, mode));
+            builder.add(Op::Label());
+            auto value = builder.add(Op(OpCode::eConstant, type).addOperand(bits | (negative ? sign : 0u)));
+            Op compare(code, ScalarType::eBool);
+            compare.addOperand(value);
+            if (code != OpCode::eFIsNan)
+              compare.addOperand(builder.add(Op(OpCode::eConstant, type).addOperand(0u)));
+            auto sink = builder.add(Op::Drain(ScalarType::eBool, builder.add(std::move(compare))));
+            builder.add(Op::Return());
+            while (ArithmeticPass::runPass(builder, { })) { }
+            bool nan = bits > infinity;
+            bool zero = !bits || (mode == DenormMode::eFlush && bits < minNormal);
+            bool expected = false;
+            switch (code) {
+              case OpCode::eFEq: expected = zero; break;
+              case OpCode::eFNe: expected = !zero; break;
+              case OpCode::eFLt: expected = !nan && !zero && negative; break;
+              case OpCode::eFLe: expected = !nan && (zero || negative); break;
+              case OpCode::eFGt: expected = !nan && !zero && !negative; break;
+              case OpCode::eFGe: expected = !nan && (zero || !negative); break;
+              case OpCode::eFIsNan: expected = nan; break;
+              default: break;
+            }
+            const auto& folded = builder.getOpForOperand(builder.getOp(sink), 0u);
+            /* Denormal comparisons must reach the backend so the declared
+             * shader mode, rather than the host's FP state, takes effect. */
+            if (bits && bits < minNormal && code != OpCode::eFIsNan) {
+              ok(!folded.isConstant());
+            } else {
+              ok(folded.isConstant());
+              ok(bool(folded.getOperand(0u)) == expected);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+
 void testIrArithmeticTruncPattern() {
   for (bool useAnd : { false, true }) {
     for (bool reversed : { false, true }) {
@@ -269,6 +322,7 @@ void testIrArithmetic() {
   RUN_TEST(testIrArithmeticIntegerWidths);
   RUN_TEST(testIrArithmeticBitExtractBounds);
   RUN_TEST(testIrArithmeticInvalidBitRanges);
+  RUN_TEST(testIrArithmeticFloatCompareDenorm);
   RUN_TEST(testIrArithmeticTruncPattern);
 }
 
