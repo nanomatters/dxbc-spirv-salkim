@@ -15,6 +15,7 @@ test_files = [
   'ir/test_ir_ssa.cpp',
   'ir/test_ir_type.cpp',
   'ir/test_ir_type_propagation.cpp',
+  'ir/test_ir_utils.cpp',
 
   'util/test_util_small_vector.cpp',
   'util/test_util_vle.cpp',

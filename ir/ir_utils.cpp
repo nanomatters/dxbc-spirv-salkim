@@ -64,8 +64,9 @@ std::pair<uint64_t, double> normalizeConstantLiteral(Operand src) {
     T i = T(src);
     return std::make_pair(uint64_t(i), double(i));
   } else {
-    double d = double(T(src));
-    return std::make_pair(uint64_t(int64_t(d)), d);
+    /* Defer integer conversion until the destination is known. Float-only
+     * conversions must also accept NaN, infinity and large finite values. */
+    return std::make_pair(uint64_t(0u), double(T(src)));
   }
 }
 
@@ -162,6 +163,9 @@ Op convertConstant(const Op& op, BasicType dstType) {
           return std::make_pair(uint64_t(0), double(0.0));
       }
     } ();
+
+    if (srcType.isFloatType() && !dstType.isFloatType())
+      normalizedInt = uint64_t(int64_t(normalizedFloat));
 
     auto operand = [dstType, normalizedInt, normalizedFloat] {
       switch (dstType.getBaseType()) {
