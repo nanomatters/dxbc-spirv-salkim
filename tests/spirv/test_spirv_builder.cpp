@@ -85,6 +85,61 @@ void testSpirvNonUniform() {
 }
 
 
+void testSpirvCbvCountLimit() {
+  struct Test {
+    int32_t limit;
+    uint32_t maxSize;
+    std::vector<uint32_t> descriptorCounts;
+    uint32_t uniformBindings;
+  };
+  const Test tests[] = {
+    { -1, 0u, { 1u, 2u }, 2u },
+    {  0, 0u, { 1u, 2u }, 0u },
+    {  1, 0u, { 1u, 1u }, 1u },
+    {  2, 0u, { 1u, 1u }, 2u },
+    {  3, 0u, { 1u, 1u, 1u }, 3u },
+    {  2, 0u, { 2u, 1u }, 1u },
+    {  3, 0u, { 2u, 1u }, 2u },
+    {  3, 0u, { 2u, 2u, 1u }, 2u },
+    {  2, 0u, { 3u, 2u }, 1u },
+    {  0, 0u, { 0u }, 0u },
+    {  1, 0u, { 0u, 1u }, 1u },
+    {  1, 0u, { 1u, 0u }, 1u },
+    /* Size-demoted bindings must not consume the remaining UBO budget. */
+    {  1, 16u, { 1u, 1u }, 1u },
+  };
+
+  for (const auto& test : tests) {
+    Builder builder;
+    auto entryPoint = test_api::setupTestFunction(builder, ShaderStage::ePixel);
+    builder.add(Op::Label());
+
+    uint32_t index = 0u;
+    for (auto count : test.descriptorCounts) {
+      auto size = test.maxSize && !index ? 2u : 1u;
+      builder.add(Op::DclCbv(Type(ScalarType::eF32, 4u).addArrayDimension(size),
+        entryPoint, 0u, index++, count));
+    }
+    builder.add(Op::Return());
+
+    SpirvBuilder::Options options = { };
+    options.maxCbvCount = test.limit;
+    options.maxCbvSize = test.maxSize;
+    auto binary = buildSpirv(builder, options);
+
+    uint32_t uniform = 0u, storage = 0u;
+    for (size_t i = 5u; i < binary.size(); i += binary[i] >> 16u) {
+      if (spv::Op(binary[i] & 0xffffu) == spv::OpVariable) {
+        uniform += binary[i + 3u] == spv::StorageClassUniform;
+        storage += binary[i + 3u] == spv::StorageClassStorageBuffer;
+      }
+    }
+    ok(uniform == test.uniformBindings);
+    ok(uniform + storage == test.descriptorCounts.size());
+  }
+}
+
+
 void testSpirvCbvStorageClass() {
   for (uint32_t count : { 1u, 2u, 0u }) {
     for (bool nonUniform : { false, true }) {
