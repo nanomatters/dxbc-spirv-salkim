@@ -2538,7 +2538,8 @@ std::pair<bool, Builder::iterator> ArithmeticPass::resolveIdentityArithmeticOp(B
         if (a.getOpCode() == OpCode::eUBitExtract) {
           const auto& cnt = m_builder.getOpForOperand(a, 2u);
 
-          if (cnt.isConstant() && (uint64_t(1u) << uint64_t(cnt.getOperand(0u))) - 1u <= uint64_t(b.getOperand(0u))) {
+          if (cnt.isConstant() && uint64_t(cnt.getOperand(0u)) < 64u &&
+              (uint64_t(1u) << uint64_t(cnt.getOperand(0u))) - 1u <= uint64_t(b.getOperand(0u))) {
             auto next = m_builder.rewriteDef(op->getDef(), a.getDef());
             return std::make_pair(true, m_builder.iter(next));
           }
@@ -3187,7 +3188,8 @@ std::pair<bool, Builder::iterator> ArithmeticPass::resolveIdentityCompareOp(Buil
     if (a.getOpCode() == OpCode::eUBitExtract) {
       const auto& cnt = m_builder.getOpForOperand(a, 2u);
 
-      if (cnt.isConstant() && (uint64_t(1u) << uint64_t(cnt.getOperand(0u))) <= uint64_t(b.getOperand(0u))) {
+      if (cnt.isConstant() && uint64_t(cnt.getOperand(0u)) < 64u &&
+          (uint64_t(1u) << uint64_t(cnt.getOperand(0u))) <= uint64_t(b.getOperand(0u))) {
         auto next = m_builder.rewriteDef(op->getDef(), m_builder.makeConstant(true));
         return std::make_pair(true, m_builder.iter(next));
       }
@@ -4367,6 +4369,34 @@ std::pair<bool, Builder::iterator> ArithmeticPass::constantFoldArithmeticOp(Buil
   if (!allOperandsConstant(*op))
     return std::make_pair(false, ++op);
 
+  /* DXBC masks shift and bitfield operands in the frontend. IR operations
+   * use the actual type width, including 64-bit address arithmetic. Leave
+   * undefined ranges alone rather than invoking undefined host shifts. */
+  auto bits = bitWidth(op->getType().getBaseType(0u).getBaseType());
+  for (uint32_t i = 0u; i < op->getType().getBaseType(0u).getVectorSize(); i++) {
+    switch (op->getOpCode()) {
+      case OpCode::eIShl:
+      case OpCode::eSShr:
+      case OpCode::eUShr:
+        if (getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i) >= bits)
+          return std::make_pair(false, ++op);
+        break;
+
+      case OpCode::eIBitInsert:
+      case OpCode::eUBitExtract:
+      case OpCode::eSBitExtract: {
+        auto arg = op->getOpCode() == OpCode::eIBitInsert ? 2u : 1u;
+        auto offset = getConstantAsUint(m_builder.getOpForOperand(*op, arg), i);
+        auto count = getConstantAsUint(m_builder.getOpForOperand(*op, arg + 1u), i);
+        if (offset > bits || count > bits - offset)
+          return std::make_pair(false, ++op);
+      } break;
+
+      default:
+        break;
+    }
+  }
+
   Op constant(OpCode::eConstant, op->getType());
 
   for (uint32_t i = 0u; i < op->getType().getBaseType(0u).getVectorSize(); i++) {
@@ -4417,24 +4447,24 @@ std::pair<bool, Builder::iterator> ArithmeticPass::constantFoldArithmeticOp(Buil
         case OpCode::eIBitInsert: {
           const auto& base = getConstantAsUint(m_builder.getOpForOperand(*op, 0u), i);
           const auto& insert = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i);
-          const auto& ofs = getConstantAsUint(m_builder.getOpForOperand(*op, 2u), i) & 31u;
-          const auto& cnt = getConstantAsUint(m_builder.getOpForOperand(*op, 3u), i) & 31u;
+          const auto& ofs = getConstantAsUint(m_builder.getOpForOperand(*op, 2u), i);
+          const auto& cnt = getConstantAsUint(m_builder.getOpForOperand(*op, 3u), i);
 
           return makeScalarOperand(op->getType(), util::binsert(base, insert, ofs, cnt));
         }
 
         case OpCode::eUBitExtract: {
           const auto& base = getConstantAsUint(m_builder.getOpForOperand(*op, 0u), i);
-          const auto& ofs = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i) & 31u;
-          const auto& cnt = getConstantAsUint(m_builder.getOpForOperand(*op, 2u), i) & 31u;
+          const auto& ofs = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i);
+          const auto& cnt = getConstantAsUint(m_builder.getOpForOperand(*op, 2u), i);
 
           return makeScalarOperand(op->getType(), util::bextract(base, ofs, cnt));
         }
 
         case OpCode::eSBitExtract: {
           const auto& base = getConstantAsUint(m_builder.getOpForOperand(*op, 0u), i);
-          const auto& ofs = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i) & 31u;
-          const auto& cnt = getConstantAsUint(m_builder.getOpForOperand(*op, 2u), i) & 31u;
+          const auto& ofs = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i);
+          const auto& cnt = getConstantAsUint(m_builder.getOpForOperand(*op, 2u), i);
 
           auto value = util::bextract(base, ofs, cnt);
 
@@ -4448,39 +4478,39 @@ std::pair<bool, Builder::iterator> ArithmeticPass::constantFoldArithmeticOp(Buil
 
         case OpCode::eIShl: {
           const auto& a = getConstantAsUint(m_builder.getOpForOperand(*op, 0u), i);
-          const auto& b = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i) & 31u;
+          const auto& b = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i);
 
           return makeScalarOperand(op->getType(), a << b);
         }
 
         case OpCode::eSShr: {
-          const auto& a = getConstantAsSint(m_builder.getOpForOperand(*op, 0u), i);
-          const auto& b = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i) & 31u;
+          auto a = uint64_t(getConstantAsSint(m_builder.getOpForOperand(*op, 0u), i));
+          const auto& b = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i);
 
           /* Manually sign-extend as necessary */
           auto value = a >> b;
-          auto sign = value & ((uint64_t(1u) << 31u) >> b);
+          auto sign = value & ((uint64_t(1u) << 63u) >> b);
 
           return makeScalarOperand(op->getType(), value | (-sign));
         }
 
         case OpCode::eUShr: {
           const auto& a = getConstantAsUint(m_builder.getOpForOperand(*op, 0u), i);
-          const auto& b = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i) & 31u;
+          const auto& b = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i);
 
           return makeScalarOperand(op->getType(), a >> b);
         }
 
         case OpCode::eIAdd: {
-          const auto& a = getConstantAsSint(m_builder.getOpForOperand(*op, 0u), i);
-          const auto& b = getConstantAsSint(m_builder.getOpForOperand(*op, 1u), i);
+          const auto& a = getConstantAsUint(m_builder.getOpForOperand(*op, 0u), i);
+          const auto& b = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i);
 
           return makeScalarOperand(op->getType(), a + b);
         }
 
         case OpCode::eISub: {
-          const auto& a = getConstantAsSint(m_builder.getOpForOperand(*op, 0u), i);
-          const auto& b = getConstantAsSint(m_builder.getOpForOperand(*op, 1u), i);
+          const auto& a = getConstantAsUint(m_builder.getOpForOperand(*op, 0u), i);
+          const auto& b = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i);
 
           return makeScalarOperand(op->getType(), a - b);
         }
@@ -4488,18 +4518,18 @@ std::pair<bool, Builder::iterator> ArithmeticPass::constantFoldArithmeticOp(Buil
         case OpCode::eIAbs: {
           const auto& a = getConstantAsSint(m_builder.getOpForOperand(*op, 0u), i);
 
-          return makeScalarOperand(op->getType(), std::abs(a));
+          return makeScalarOperand(op->getType(), a < 0 ? 0u - uint64_t(a) : uint64_t(a));
         }
 
         case OpCode::eINeg: {
-          const auto& a = getConstantAsSint(m_builder.getOpForOperand(*op, 0u), i);
+          const auto& a = getConstantAsUint(m_builder.getOpForOperand(*op, 0u), i);
 
-          return makeScalarOperand(op->getType(), -a);
+          return makeScalarOperand(op->getType(), 0u - a);
         }
 
         case OpCode::eIMul: {
-          const auto& a = getConstantAsSint(m_builder.getOpForOperand(*op, 0u), i);
-          const auto& b = getConstantAsSint(m_builder.getOpForOperand(*op, 1u), i);
+          const auto& a = getConstantAsUint(m_builder.getOpForOperand(*op, 0u), i);
+          const auto& b = getConstantAsUint(m_builder.getOpForOperand(*op, 1u), i);
 
           return makeScalarOperand(op->getType(), a * b);
         }
