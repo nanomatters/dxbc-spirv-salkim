@@ -263,7 +263,8 @@ Builder test_spirv_input_target_generic(bool isMultisampled) {
   auto sampleId = SsaDef();
 
   if (isMultisampled) {
-    auto sampleInput = builder.add(Op::DclInputBuiltIn(ScalarType::eU32, entryPoint, BuiltIn::eSampleId));
+    auto sampleInput = builder.add(Op::DclInputBuiltIn(ScalarType::eU32, entryPoint,
+      BuiltIn::eSampleId, InterpolationMode::eFlat));
     sampleId = builder.add(Op::InputLoad(ScalarType::eU32, sampleInput, SsaDef()));
   }
 
