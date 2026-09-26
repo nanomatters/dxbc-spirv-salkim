@@ -19,6 +19,10 @@ test_files = [
   'util/test_util_vle.cpp',
 ]
 
+if get_option('enable_sm3')
+  test_files += [ 'sm3/test_sm3_converter.cpp' ]
+endif
+
 if get_option('enable_sm5')
   test_files += [
     'dxbc/test_dxbc_common.cpp',

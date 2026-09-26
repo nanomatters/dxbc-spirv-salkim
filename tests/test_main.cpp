@@ -1,5 +1,9 @@
 #include <iostream>
 
+#ifdef DXBC_SPV_ENABLE_SM3
+#include "./sm3/test_sm3.h"
+#endif
+
 #ifdef DXBC_SPV_ENABLE_SM5
 #include "./dxbc/test_dxbc.h"
 #endif
@@ -19,6 +23,10 @@ TestState g_testState;
 void runTests() {
   util::runTests();
   ir::runTests();
+
+#ifdef DXBC_SPV_ENABLE_SM3
+  sm3::runTests();
+#endif
 
 #ifdef DXBC_SPV_ENABLE_SPIRV
   spirv::runTests();
