@@ -36,5 +36,5 @@ void runTests() {
 
 int main(int, char**) {
   dxbc_spv::tests::runTests();
-  return 0u;
+  return dxbc_spv::tests::g_testState.testsFailed ? 1 : 0;
 }
