@@ -721,14 +721,17 @@ std::pair<bool, Builder::iterator> ScalarizePass::resolveCompositeExtractFromCon
 
   /* Fetch constant op */
   const auto& valueOp = m_builder.getOpForOperand(*op, 0u);
-  auto index = uint32_t(addressOp.getOperand(0u));
+  auto valueType = valueOp.getType();
 
   /* Compute index and number of scalar operands we need to extract */
   uint32_t scalarIndex = 0u;
   uint32_t scalarCount = op->getType().computeFlattenedScalarCount();
 
-  for (uint32_t i = 0u; i < index; i++)
-    scalarIndex += valueOp.getType().getSubType(i).computeFlattenedScalarCount();
+  for (uint32_t i = 0u; i < addressOp.getOperandCount(); i++) {
+    auto index = uint32_t(addressOp.getOperand(i));
+    scalarIndex += valueType.computeScalarIndex(index);
+    valueType = valueType.getSubType(index);
+  }
 
   /* Assemble new constant op */
   Op constant(OpCode::eConstant, op->getType());
