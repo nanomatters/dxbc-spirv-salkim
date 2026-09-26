@@ -2714,7 +2714,7 @@ std::pair<bool, Builder::iterator> ArithmeticPass::resolveIdentityArithmeticOp(B
             isConstantNegative = isConstantNegative || value < 0;
             isConstantPositive = isConstantPositive || value > 0;
 
-            auto negOperand = makeScalarOperand(b.getType(), -value);
+            auto negOperand = makeScalarOperand(b.getType(), 0u - uint64_t(value));
             auto posOperand = makeScalarOperand(b.getType(), value);
 
             constant.addOperand(negOperand);
