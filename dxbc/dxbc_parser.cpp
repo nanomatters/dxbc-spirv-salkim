@@ -1360,6 +1360,10 @@ OpToken::OpToken(util::ByteReader& reader) {
 
 
 bool OpToken::write(util::ByteWriter& writer) const {
+  /* Custom data has its own length word and no extended opcode tokens. */
+  if (isCustomData())
+    return writer.write(m_token) && writer.write(m_length);
+
   util::small_vector<uint32_t, 4u> tokens = { };
   tokens.push_back(m_token);
 
@@ -1887,6 +1891,12 @@ bool Instruction::write(util::ByteWriter& writer, const ShaderInfo& info) const 
     }
 
     if (!operand->write(writer, *this))
+      return false;
+  }
+
+  /* Custom data payload follows its two-word header. */
+  for (auto word : m_customData) {
+    if (!writer.write(word))
       return false;
   }
 
