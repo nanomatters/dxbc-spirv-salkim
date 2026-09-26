@@ -3241,10 +3241,10 @@ std::pair<bool, Builder::iterator> ArithmeticPass::resolveIdentityCompareOp(Buil
     }
   }
 
-  /* op(-a, const) = op(-const, a) */
+  /* op(-a, const) = op(-const, a) for equality only. Modular negation
+   * does not reverse ordering: in particular, -INT_MIN is INT_MIN. */
   if (a.getOpCode() == OpCode::eINeg && b.isConstant()) {
-    /* For inequalities, this is only valid if the type is signed */
-    if (a.getType().getBaseType(0u).isSignedIntType() || (op->getOpCode() == OpCode::eIEq || op->getOpCode() == OpCode::eINe)) {
+    if (op->getOpCode() == OpCode::eIEq || op->getOpCode() == OpCode::eINe) {
       auto valueDef = m_builder.getOpForOperand(a, 0u).getDef();
 
       if (!isOnlyUse(m_builder, valueDef, a.getDef())) {
