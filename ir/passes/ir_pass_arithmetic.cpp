@@ -3591,8 +3591,9 @@ std::pair<bool, Builder::iterator> ArithmeticPass::resolveIdentitySelect(Builder
     auto fractCompare = cond.getOpCode() == OpCode::eBOr ? OpCode::eFLe : OpCode::eFGt;
     auto valueCompare = cond.getOpCode() == OpCode::eBOr ? OpCode::eFGe : OpCode::eFLt;
 
+    uint32_t comparisons = 0u;
     for (uint32_t i = 0u; i < cond.getOperandCount(); i++) {
-      const auto& cmpOp = m_builder.getOpForOperand(cond, 0u);
+      const auto& cmpOp = m_builder.getOpForOperand(cond, i);
 
       if (cmpOp.getOpCode() != fractCompare && cmpOp.getOpCode() != valueCompare)
         return std::make_pair(false, ++op);
@@ -3607,13 +3608,18 @@ std::pair<bool, Builder::iterator> ArithmeticPass::resolveIdentitySelect(Builder
       if (cmpOp.getOpCode() == fractCompare) {
         if (cmpA.getOpCode() != OpCode::eFFract || m_builder.getOpForOperand(cmpA, 0u).getDef() != valueOp.getDef())
           return std::make_pair(false, ++op);
+        comparisons |= 1u;
       }
 
       if (cmpOp.getOpCode() == valueCompare) {
         if (cmpA.getDef() != valueOp.getDef())
           return std::make_pair(false, ++op);
+        comparisons |= 2u;
       }
     }
+
+    if (comparisons != 3u)
+      return std::make_pair(false, ++op);
 
     m_builder.rewriteOp(op->getDef(), Op::FRound(op->getType(),
       valueOp.getDef(), RoundMode::eZero).setFlags(op->getFlags()));
