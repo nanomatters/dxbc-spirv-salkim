@@ -39,7 +39,8 @@ inline size_t encode(uint64_t sym, uint8_t* data, size_t maxSize) {
 
   /* Header token; the number of leading '1' bits is equivalent to the
    * number of bytes that follow. */
-  data[0u] = uint8_t(0xff00u >> len) | ((sym >> (8u * len)) & (0x7fu >> len));
+  data[0u] = len == 8u ? 0xffu
+    : uint8_t(0xff00u >> len) | ((sym >> (8u * len)) & (0x7fu >> len));
 
   for (size_t i = 1u; i <= len; i++)
     data[i] = uint8_t(sym >> (8u * (len - i)));
