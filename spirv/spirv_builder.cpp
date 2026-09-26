@@ -142,7 +142,7 @@ void SpirvBuilder::demoteCbv() {
 
     if (m_options.maxCbvCount >= 0) {
       demote = demote || !descriptorCount ||
-        int64_t(cbvCount) + int64_t(descriptorCount) >= int64_t(m_options.maxCbvCount);
+        int64_t(cbvCount) + int64_t(descriptorCount) > int64_t(m_options.maxCbvCount);
     }
 
     if (demote)
