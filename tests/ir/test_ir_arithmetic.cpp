@@ -58,11 +58,62 @@ void testIrArithmeticSelectMerge(uint32_t variant) {
 }
 
 
+void testIrArithmeticNegatedCompare() {
+  const OpCode comparisons[] = {
+    OpCode::eIEq, OpCode::eINe,
+    OpCode::eSLt, OpCode::eSLe, OpCode::eSGt, OpCode::eSGe,
+    OpCode::eULt, OpCode::eULe, OpCode::eUGt, OpCode::eUGe,
+  };
+
+  for (auto code : comparisons) {
+    for (uint32_t input : { 0u, 1u, 0x7fffffffu, 0x80000000u, 0xffffffffu }) {
+      for (uint32_t constant : { 0u, 1u, 5u, 0x7fffffffu, 0x80000000u, 0xffffffffu }) {
+        Builder builder;
+        test_api::setupTestFunction(builder, ShaderStage::eCompute);
+        builder.add(Op::Label());
+        auto value = builder.add(Op::Drain(ScalarType::eI32, builder.makeConstant(int32_t(input))));
+        auto neg = builder.add(Op::INeg(ScalarType::eI32, value));
+        auto cmp = builder.add(Op(code, ScalarType::eBool)
+          .addOperands(neg, builder.makeConstant(int32_t(constant))));
+        auto sink = builder.add(Op::Drain(ScalarType::eBool, cmp));
+        /* Exercise the rewrite's multiple-use condition. */
+        builder.add(Op::Drain(ScalarType::eI32, value));
+        builder.add(Op::Return());
+
+        ArithmeticPass::runPass(builder, { });
+        builder.rewriteDef(value, builder.makeConstant(int32_t(input)));
+        while (ArithmeticPass::runPass(builder, { })) { }
+
+        uint32_t lhs = 0u - input;
+        bool expected = false;
+        switch (code) {
+          case OpCode::eIEq: expected = lhs == constant; break;
+          case OpCode::eINe: expected = lhs != constant; break;
+          case OpCode::eSLt: expected = int32_t(lhs) <  int32_t(constant); break;
+          case OpCode::eSLe: expected = int32_t(lhs) <= int32_t(constant); break;
+          case OpCode::eSGt: expected = int32_t(lhs) >  int32_t(constant); break;
+          case OpCode::eSGe: expected = int32_t(lhs) >= int32_t(constant); break;
+          case OpCode::eULt: expected = lhs <  constant; break;
+          case OpCode::eULe: expected = lhs <= constant; break;
+          case OpCode::eUGt: expected = lhs >  constant; break;
+          case OpCode::eUGe: expected = lhs >= constant; break;
+          default: break;
+        }
+        const auto& result = builder.getOpForOperand(builder.getOp(sink), 0u);
+        ok(result.isConstant());
+        ok(bool(result.getOperand(0u)) == expected);
+      }
+    }
+  }
+}
+
+
 void testIrArithmetic() {
   /* Matching selects, non-select on either side, mismatched conditions,
    * shared selects, and shared selects with a constant branch. */
   for (uint32_t variant = 0u; variant < 6u; variant++)
     RUN_TEST(testIrArithmeticSelectMerge, variant);
+  RUN_TEST(testIrArithmeticNegatedCompare);
 }
 
 }
