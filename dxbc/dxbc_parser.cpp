@@ -1365,7 +1365,7 @@ bool OpToken::write(util::ByteWriter& writer) const {
     return writer.write(m_token) && writer.write(m_length);
 
   util::small_vector<uint32_t, 4u> tokens = { };
-  tokens.push_back(m_token);
+  tokens.push_back(m_token & ~ExtendedTokenBit);
 
   /* Set extended tokens */
   if (m_sampleControls)
