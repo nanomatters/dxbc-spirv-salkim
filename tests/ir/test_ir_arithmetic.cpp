@@ -108,12 +108,134 @@ void testIrArithmeticNegatedCompare() {
 }
 
 
+void testIrArithmeticIntegerWidths() {
+  for (auto type : { ScalarType::eU8, ScalarType::eU16, ScalarType::eU32, ScalarType::eU64 }) {
+    uint32_t bits = bitWidth(type);
+    uint64_t mask = ~uint64_t(0u) >> (64u - bits);
+    uint64_t sign = uint64_t(1u) << (bits - 1u);
+
+    auto check = [=] (OpCode code, std::initializer_list<uint64_t> args, uint64_t expected) {
+      Builder builder;
+      test_api::setupTestFunction(builder, ShaderStage::eCompute);
+      builder.add(Op::Label());
+      Op op(code, type);
+      for (auto value : args)
+        op.addOperand(builder.add(Op(OpCode::eConstant, type).addOperand(value & mask)));
+      auto sink = builder.add(Op::Drain(type, builder.add(std::move(op))));
+      builder.add(Op::Return());
+      while (ArithmeticPass::runPass(builder, { })) { }
+      const auto& result = builder.getOpForOperand(builder.getOp(sink), 0u);
+      ok(result.isConstant());
+      ok((uint64_t(result.getOperand(0u)) & mask) == (expected & mask));
+    };
+
+    for (uint64_t value : { uint64_t(0u), uint64_t(1u), sign - 1u, sign, mask }) {
+      check(OpCode::eIAdd, { value, sign }, value + sign);
+      check(OpCode::eISub, { value, sign }, value - sign);
+      check(OpCode::eIMul, { value, mask }, value * mask);
+      check(OpCode::eINeg, { value }, 0u - value);
+      check(OpCode::eIAbs, { value }, value & sign ? 0u - value : value);
+
+      for (uint32_t shift = 0u; shift < bits; shift++) {
+        check(OpCode::eIShl, { value, shift }, value << shift);
+        check(OpCode::eUShr, { value, shift }, value >> shift);
+        auto shifted = value >> shift;
+        if ((value & sign) && shift)
+          shifted |= mask ^ (mask >> shift);
+        check(OpCode::eSShr, { value, shift }, shifted);
+      }
+
+      for (uint32_t offset = 0u; offset <= bits; offset++) {
+        for (uint32_t count : { 0u, bits - offset }) {
+          uint64_t extracted = 0u, inserted = value;
+          /* A bit-by-bit oracle avoids duplicating the folder's mask logic. */
+          for (uint32_t bit = 0u; bit < count; bit++) {
+            extracted |= ((value >> (offset + bit)) & 1u) << bit;
+            inserted = (inserted & ~(uint64_t(1u) << (offset + bit))) |
+              (((~value >> bit) & 1u) << (offset + bit));
+          }
+          check(OpCode::eUBitExtract, { value, offset, count }, extracted);
+          auto signedValue = extracted;
+          if (count && (extracted & (uint64_t(1u) << (count - 1u))))
+            signedValue |= ~(mask >> (bits - count));
+          check(OpCode::eSBitExtract, { value, offset, count }, signedValue);
+          check(OpCode::eIBitInsert, { value, ~value, offset, count }, inserted);
+        }
+      }
+    }
+  }
+}
+
+
+void testIrArithmeticBitExtractBounds() {
+  for (auto type : { ScalarType::eU32, ScalarType::eU64 }) {
+    auto bits = bitWidth(type);
+    auto mask = ~uint64_t(0u) >> (64u - bits);
+    for (uint32_t count : { 0u, 1u, 31u, 32u, bits - 1u, bits }) {
+      auto extracted = count ? mask >> (bits - count) : 0u;
+      for (auto limit : { uint64_t(0u), uint64_t(1u), mask >> 1u, mask }) {
+        for (bool compare : { false, true }) {
+          Builder builder;
+          test_api::setupTestFunction(builder, ShaderStage::eCompute);
+          builder.add(Op::Label());
+          auto input = builder.add(Op(OpCode::eConstant, type).addOperand(mask));
+          auto value = builder.add(Op::Drain(type, input));
+          auto field = builder.add(Op::UBitExtract(type, value,
+            builder.makeConstant(0u), builder.makeConstant(count)));
+          auto bound = builder.add(Op(OpCode::eConstant, type).addOperand(limit));
+          auto resultType = compare ? ScalarType::eBool : type;
+          auto result = builder.add(Op(compare ? OpCode::eULt : OpCode::eUMin, resultType)
+            .addOperands(field, bound));
+          auto sink = builder.add(Op::Drain(resultType, result));
+          builder.add(Op::Return());
+          ArithmeticPass::runPass(builder, { });
+          builder.rewriteDef(value, input);
+          while (ArithmeticPass::runPass(builder, { })) { }
+          const auto& folded = builder.getOpForOperand(builder.getOp(sink), 0u);
+          ok(folded.isConstant());
+          ok(uint64_t(folded.getOperand(0u)) ==
+            (compare ? uint64_t(extracted < limit) : std::min(extracted, limit)));
+        }
+      }
+    }
+  }
+}
+
+
+void testIrArithmeticInvalidBitRanges() {
+  for (auto type : { ScalarType::eU16, ScalarType::eU32, ScalarType::eU64 }) {
+    auto bits = bitWidth(type);
+    for (auto code : { OpCode::eIShl, OpCode::eSShr, OpCode::eUShr,
+                      OpCode::eUBitExtract, OpCode::eSBitExtract, OpCode::eIBitInsert }) {
+      Builder builder;
+      test_api::setupTestFunction(builder, ShaderStage::eCompute);
+      builder.add(Op::Label());
+      Op op(code, type);
+      op.addOperand(builder.add(Op(OpCode::eConstant, type).addOperand(1u)));
+      if (code == OpCode::eIBitInsert)
+        op.addOperand(builder.add(Op(OpCode::eConstant, type).addOperand(2u)));
+      op.addOperand(builder.makeConstant(bits));
+      if (code == OpCode::eUBitExtract || code == OpCode::eSBitExtract || code == OpCode::eIBitInsert)
+        op.addOperand(builder.makeConstant(1u));
+      auto sink = builder.add(Op::Drain(type, builder.add(std::move(op))));
+      builder.add(Op::Return());
+      while (ArithmeticPass::runPass(builder, { })) { }
+      /* Undefined shader inputs must not trigger undefined host arithmetic. */
+      ok(builder.getOpForOperand(builder.getOp(sink), 0u).getOpCode() == code);
+    }
+  }
+}
+
+
 void testIrArithmetic() {
   /* Matching selects, non-select on either side, mismatched conditions,
    * shared selects, and shared selects with a constant branch. */
   for (uint32_t variant = 0u; variant < 6u; variant++)
     RUN_TEST(testIrArithmeticSelectMerge, variant);
   RUN_TEST(testIrArithmeticNegatedCompare);
+  RUN_TEST(testIrArithmeticIntegerWidths);
+  RUN_TEST(testIrArithmeticBitExtractBounds);
+  RUN_TEST(testIrArithmeticInvalidBitRanges);
 }
 
 }
