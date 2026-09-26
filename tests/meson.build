@@ -27,6 +27,7 @@ if get_option('enable_sm5')
   test_files += [
     'dxbc/test_dxbc_common.cpp',
     'dxbc/test_dxbc_converter.cpp',
+    'dxbc/test_dxbc_writer.cpp',
     'dxbc/test_dxbc_signature.cpp',
   ]
 endif
