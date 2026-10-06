@@ -282,6 +282,11 @@ void Builder::removeUse(SsaDef target, SsaDef user) {
 
   auto& metadata = m_ops.at(target);
 
+  if (!metadata.uses.empty() && metadata.uses.back() == user) {
+    metadata.uses.pop_back();
+    return;
+  }
+
   for (auto i = metadata.uses.begin(); i != metadata.uses.end(); i++) {
     if (*i == user) {
       metadata.uses.erase(i);
