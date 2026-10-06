@@ -417,6 +417,39 @@ void testIrBuilderRemoveStorage() {
 }
 
 
+void testIrBuilderRemoveUseOrder() {
+  Builder builder;
+  auto value = builder.makeConstant(1u);
+  std::vector<SsaDef> uses;
+  for (uint32_t i = 0u; i < 6u; i++)
+    uses.push_back(builder.add(Op::Drain(ScalarType::eU32, value, value, value)));
+  ok(getUseDefs(builder, value) == uses);
+  checkIrBuilderUses(builder);
+
+  auto removeUser = [&](size_t index) {
+    auto def = uses.at(index);
+    builder.remove(def);
+    uses.erase(uses.begin() + index);
+    ok(getUseDefs(builder, value) == uses);
+    checkIrBuilderUses(builder);
+    return def;
+  };
+
+  removeUser(uses.size() - 1u);
+  removeUser(0u);
+  auto middle = removeUser(1u);
+  auto recycled = builder.add(Op::Drain(ScalarType::eU32, value, value, value));
+  ok(recycled == middle);
+  uses.push_back(recycled);
+  ok(getUseDefs(builder, value) == uses);
+  checkIrBuilderUses(builder);
+
+  /* Repeated operands revisit an empty list after the final edge is removed. */
+  while (!uses.empty())
+    removeUser(uses.size() - 1u);
+}
+
+
 void testIrBuilderLiteralOperands() {
   Builder builder;
   auto a = builder.makeConstant(1u);
@@ -450,6 +483,7 @@ void testIrBuilder() {
   RUN_TEST(testIrBuilderUses);
   RUN_TEST(testIrBuilderRewriteStorage);
   RUN_TEST(testIrBuilderRemoveStorage);
+  RUN_TEST(testIrBuilderRemoveUseOrder);
   RUN_TEST(testIrBuilderLiteralOperands);
 }
 
