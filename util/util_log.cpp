@@ -1,3 +1,4 @@
+// Salkim modifications by Erhan Bilgili on 2026-10-14.
 #include <iostream>
 
 #include "util_log.h"
@@ -37,7 +38,7 @@ void Logger::log(LogLevel severity, const char* message) {
     return;
   }
 
-  std::cerr << severity << message << std::endl;
+  std::cerr << severity << "dxbc-spirv-salkim: " << message << std::endl;
 }
 
 

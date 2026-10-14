@@ -1,3 +1,4 @@
+// Salkim modifications by Erhan Bilgili on 2026-10-14.
 #include <chrono>
 #include <fstream>
 #include <iomanip>
@@ -69,7 +70,7 @@ public:
   }
 
   void message(LogLevel severity, const char* message) override {
-    std::cerr << severity << m_fileName << ": " << message << std::endl;
+    std::cerr << severity << "dxbc-spirv-salkim: " << m_fileName << ": " << message << std::endl;
   }
 
 private:
@@ -235,7 +236,7 @@ bool writeSpirvBinary(ir::Builder builder, const Options& options, Timers& timer
   file.write(reinterpret_cast<const char*>(data.data()), data.size());
   return bool(file);
 #else
-  std::cerr << "Error: dxbc-spirv built without SPIR-V support." << std::endl;
+  std::cerr << "Error: dxbc-spirv-salkim built without SPIR-V support." << std::endl;
   return false;
 #endif /* DXBC_SPV_ENABLE_SPIRV */
 }
@@ -340,7 +341,7 @@ bool compileShader(util::ByteReader reader, const Options& options) {
 
 
 void printHelp(const char* appName) {
-  std::cerr << "Usage: " << appName << " [options] input.dxbc" << std::endl
+  std::cerr << "dxbc-spirv-salkim\nUsage: " << appName << " [options] input.dxbc" << std::endl
             << std::endl
             << "Options:" << std::endl
             << "    --spv file          Emit SPIR-V to given binary file. If not specified," << std::endl
