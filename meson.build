@@ -1,4 +1,5 @@
-project('dxbc-spirv', ['cpp'],
+# Salkim modifications by Erhan Bilgili on 2026-10-14.
+project('dxbc-spirv-salkim', ['cpp'],
   version         : '0.1.0',
   meson_version   : '>= 1.0',
   default_options : [ 'cpp_std=c++17', 'warning_level=2', 'cpp_eh=none' ])
