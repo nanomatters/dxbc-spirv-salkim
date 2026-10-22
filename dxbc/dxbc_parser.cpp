@@ -1865,8 +1865,7 @@ bool Instruction::write(util::ByteWriter& writer, const ShaderInfo& info) const 
 
   if (token.isCustomData()) {
     auto [data, size] = getCustomData();
-    writer.write(size * 4u, reinterpret_cast<const uint8_t*>(data));
-    return true;
+    return !size || writer.write(size * sizeof(*data), reinterpret_cast<const uint8_t*>(data));
   }
 
   /* Emit operands */
@@ -1897,12 +1896,6 @@ bool Instruction::write(util::ByteWriter& writer, const ShaderInfo& info) const 
     }
 
     if (!operand->write(writer, *this))
-      return false;
-  }
-
-  /* Custom data payload follows its two-word header. */
-  for (auto word : m_customData) {
-    if (!writer.write(word))
       return false;
   }
 
