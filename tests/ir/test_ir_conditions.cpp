@@ -119,7 +119,91 @@ static void testConditionEffects(OpCode code, bool fullPipeline) {
   }
 }
 
+static bool floatEqual(uint64_t a, uint64_t b, ScalarType type, bool flush) {
+  uint32_t mantissa = type == ScalarType::eF16 ? 10u : type == ScalarType::eF32 ? 23u : 52u;
+  uint64_t magnitude = (uint64_t(1u) << (bitWidth(type) - 1u)) - 1u;
+  uint64_t fraction = (uint64_t(1u) << mantissa) - 1u;
+  uint64_t exponent = magnitude & ~fraction;
+
+  if (((a & exponent) == exponent && (a & fraction)) ||
+      ((b & exponent) == exponent && (b & fraction)))
+    return false;
+
+  if (!(a & magnitude) || (flush && (a & magnitude) <= fraction))
+    a = 0u;
+  if (!(b & magnitude) || (flush && (b & magnitude) <= fraction))
+    b = 0u;
+  return a == b;
+}
+
+static uint64_t evaluateCondition(const Builder& builder, SsaDef def,
+    uint64_t input, ScalarType type, bool flush) {
+  const auto& op = builder.getOp(def);
+  auto arg = [&](uint32_t i) {
+    return evaluateCondition(builder, SsaDef(op.getOperand(i)), input, type, flush);
+  };
+
+  switch (op.getOpCode()) {
+    case OpCode::eConstant: return uint64_t(op.getOperand(0u));
+    case OpCode::eDrain: return input;
+    case OpCode::eFEq: return floatEqual(arg(0u), arg(1u), type, flush);
+    case OpCode::eFNe: return !floatEqual(arg(0u), arg(1u), type, flush);
+    case OpCode::eBAnd: return arg(0u) && arg(1u);
+    case OpCode::eBOr: return arg(0u) || arg(1u);
+    case OpCode::eBNot: return !arg(0u);
+    case OpCode::eSelect: return arg(arg(0u) ? 1u : 2u);
+    default:
+      ok(false);
+      return 0u;
+  }
+}
+
+static void testConditionFloatComparisons(ScalarType type) {
+  uint32_t mantissa = type == ScalarType::eF16 ? 10u : type == ScalarType::eF32 ? 23u : 52u;
+  uint64_t sign = uint64_t(1u) << (bitWidth(type) - 1u);
+  uint64_t normal = uint64_t(1u) << mantissa;
+  uint64_t infinity = (sign - 1u) & ~(normal - 1u);
+  const uint64_t values[] = {
+    0u, sign, 1u, sign | 1u, normal - 1u, normal, normal + 1u, infinity, infinity | 1u,
+  };
+
+  for (bool flush : { false, true }) {
+    for (auto a : values) {
+      for (auto b : values) {
+        Builder builder;
+        auto entry = test_api::setupTestFunction(builder, ShaderStage::eCompute);
+        builder.add(Op::SetFpMode(entry, type, {}, RoundMode::eNearestEven,
+          flush ? DenormMode::eFlush : DenormMode::ePreserve));
+        auto constant = [&](uint64_t bits) {
+          return builder.add(Op(OpCode::eConstant, type).addOperand(Operand(bits)));
+        };
+        auto input = builder.add(Op::Drain(type, constant(0u)));
+        auto left = builder.add(Op::FEq(ScalarType::eBool, input, constant(a)));
+        auto right = builder.add(Op::FEq(ScalarType::eBool, input, constant(b)));
+        auto result = builder.add(Op::BAnd(ScalarType::eBool, left, right));
+        auto sink = builder.add(Op::Drain(ScalarType::eBool, result));
+        builder.add(Op::Return());
+
+        legalizeIr(builder, {});
+        result = builder.getOpForOperand(sink, 0u).getDef();
+        for (auto value : values) {
+          bool expected = floatEqual(value, a, type, flush) && floatEqual(value, b, type, flush);
+          ok(bool(evaluateCondition(builder, result, value, type, flush)) == expected);
+        }
+
+        if (a == normal && b == normal + 1u) {
+          const auto& folded = builder.getOp(result);
+          ok(folded.isConstant() && !bool(folded.getOperand(0u)));
+        }
+      }
+    }
+  }
+}
+
 void testIrConditions() {
+  for (auto type : { ScalarType::eF16, ScalarType::eF32, ScalarType::eF64 })
+    testConditionFloatComparisons(type);
+
   const OpCode effects[] = {
     OpCode::eBufferAtomic, OpCode::eLdsAtomic, OpCode::eImageAtomic,
     OpCode::eCounterAtomic, OpCode::eMemoryAtomic, OpCode::eFunctionCall,
