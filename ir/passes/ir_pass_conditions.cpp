@@ -102,7 +102,7 @@ bool ConditionPass::evaluateBooleanAnd(const Builder& builder, const Op& a, cons
 
 
 std::optional<bool> ConditionPass::evaluateBoolExpression(const Op& expr, size_t count, const Condition* conditions, size_t depth) {
-  if (expr.getType() != ScalarType::eBool)
+  if (expr.getType() != ScalarType::eBool || depth > MaxRecursionDepth)
     return std::nullopt;
 
   /* Check negation first because that will generally not occur in
@@ -330,7 +330,7 @@ SsaDef ConditionPass::rewriteOp(const Op& base, const Op& expr, size_t count, co
 
   for (uint32_t i = 0u; i < expr.getFirstLiteralOperandIndex(); i++) {
     const auto& oldArg = m_builder.getOpForOperand(expr, i);
-    const auto& newArg = m_builder.getOp(rewriteOp(expr, oldArg, count, conditions, depth));
+    const auto& newArg = m_builder.getOp(rewriteOp(expr, oldArg, count, conditions, depth + 1u));
 
     if (oldArg.getDef() != newArg.getDef()) {
       newOp.setOperand(i, newArg.getDef());
