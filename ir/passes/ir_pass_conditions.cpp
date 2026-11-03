@@ -66,8 +66,19 @@ bool ConditionPass::evaluateBooleanAnd(const Builder& builder, const Op& a, cons
     const auto& c0 = builder.getOpForOperand(a, 1);
     const auto& c1 = builder.getOpForOperand(b, 1);
 
-    if (v0.getDef() == v1.getDef() && c0.isConstant() && c1.isConstant())
+    if (v0.getDef() == v1.getDef() && c0.isConstant() && c1.isConstant()) {
+      if (a.getOpCode() == OpCode::eFEq) {
+        /* Distinct zero and subnormal encodings can compare equal after flushing. */
+        auto type = c0.getType().getBaseType(0u).getBaseType();
+        uint32_t mantissa = type == ScalarType::eF16 ? 10u : type == ScalarType::eF32 ? 23u : 52u;
+        uint64_t magnitude = (uint64_t(1u) << (bitWidth(type) - 1u)) - 1u;
+        uint64_t normal = uint64_t(1u) << mantissa;
+        if ((uint64_t(c0.getOperand(0u)) & magnitude) < normal &&
+            (uint64_t(c1.getOperand(0u)) & magnitude) < normal)
+          return true;
+      }
       return c0.getDef() == c1.getDef();
+    }
   }
 
   /* a == b && a != b */
