@@ -7,6 +7,7 @@ namespace dxbc_spv::tests::ir {
 void testIrArithmetic();
 void testIrBuilder();
 void testIrCse();
+void testIrConditions();
 void testIrDominance();
 void testIrInputMap();
 void testIrOp();
@@ -24,6 +25,7 @@ void runTests() {
   RUN_TEST(testIrArithmetic);
   RUN_TEST(testIrBuilder);
   RUN_TEST(testIrCse);
+  RUN_TEST(testIrConditions);
   RUN_TEST(testIrDominance);
   RUN_TEST(testIrSerialize);
   RUN_TEST(testIrScalarize);
