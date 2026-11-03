@@ -297,6 +297,21 @@ SsaDef ConditionPass::rewriteOp(const Op& base, const Op& expr, size_t count, co
   if (expr.isDeclarative() || expr.getOpCode() == OpCode::ePhi)
     return expr.getDef();
 
+  /* Cloning an effectful result would execute its operation twice. */
+  switch (expr.getOpCode()) {
+    case OpCode::eLdsAtomic:
+    case OpCode::eBufferAtomic:
+    case OpCode::eImageAtomic:
+    case OpCode::eCounterAtomic:
+    case OpCode::eMemoryAtomic:
+    case OpCode::eFunctionCall:
+    case OpCode::eDrain:
+      return expr.getDef();
+
+    default:
+      break;
+  }
+
   /* Recursively rewrite operands */
   bool progress = false;
 
