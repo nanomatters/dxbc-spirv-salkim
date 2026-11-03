@@ -200,7 +200,45 @@ static void testConditionFloatComparisons(ScalarType type) {
   }
 }
 
+static void testConditionRecursion(uint32_t depth, bool booleanChain) {
+  Builder builder;
+  test_api::setupTestFunction(builder, ShaderStage::eCompute);
+  builder.add(Op::Label());
+  auto condition = builder.add(Op::Drain(ScalarType::eBool, builder.makeConstant(true)));
+  SsaDef value;
+
+  if (booleanChain) {
+    value = condition;
+    for (uint32_t i = 0u; i < depth; i++)
+      value = builder.add(Op::BNot(ScalarType::eBool, value));
+    value = builder.add(Op::Select(ScalarType::eBool, condition, value, builder.makeConstant(false)));
+    builder.add(Op::Drain(ScalarType::eBool, value));
+  } else {
+    auto a = builder.add(Op::Drain(ScalarType::eU32, builder.makeConstant(2u)));
+    auto b = builder.add(Op::Drain(ScalarType::eU32, builder.makeConstant(3u)));
+    value = builder.add(Op::Select(ScalarType::eU32, condition, a, b));
+    for (uint32_t i = 0u; i < depth; i++)
+      value = builder.add(Op::IAdd(ScalarType::eU32, value, builder.makeConstant(i)));
+    value = builder.add(Op::Select(ScalarType::eU32, condition, value, builder.makeConstant(0u)));
+    builder.add(Op::Drain(ScalarType::eU32, value));
+  }
+  builder.add(Op::Return());
+
+  ConditionPass::runPass(builder);
+
+  /* Short expressions still fold, but deep ones keep the unresolved subtree. */
+  if (booleanChain)
+    ok((countOp(builder, OpCode::eBNot) != 0u) == (depth == 512u));
+  else
+    ok(countOp(builder, OpCode::eSelect) == (depth == 512u ? 2u : 1u));
+}
+
 void testIrConditions() {
+  for (auto depth : { 8u, 512u }) {
+    testConditionRecursion(depth, false);
+    testConditionRecursion(depth, true);
+  }
+
   for (auto type : { ScalarType::eF16, ScalarType::eF32, ScalarType::eF64 })
     testConditionFloatComparisons(type);
 
