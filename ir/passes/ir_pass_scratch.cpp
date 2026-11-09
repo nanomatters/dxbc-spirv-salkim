@@ -666,7 +666,7 @@ bool CleanupScratchPass::promoteScratchLdsCopy(SsaDef def) {
       /* Emit fallback scratch load */
       auto newScratchAddress = baseAddress;
 
-      if (scratch.getType().isVectorType()) {
+      if (scratch.getType().getSubType(0u).isVectorType()) {
         newScratchAddress = m_builder.addBefore(load, Op::CompositeConstruct(
           BasicType(ScalarType::eU32, 2u), baseAddress, m_builder.makeConstant(componentIndex + i)));
       }
