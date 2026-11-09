@@ -1,3 +1,4 @@
+#include "../../ir/ir_legalize.h"
 #include "../../ir/passes/ir_pass_scratch.h"
 #include "../../ir/passes/ir_pass_arithmetic.h"
 #include "../../ir/passes/ir_pass_scalarize.h"
@@ -157,7 +158,92 @@ void testIrScratchCbvIncompleteStores() {
 }
 
 
+void testIrScratchLdsFallback(uint32_t components, bool scalarLoad, uint32_t interference, bool bounds) {
+  Builder builder;
+  auto entry = test_api::setupTestFunction(builder, ShaderStage::eCompute);
+  builder.add(Op::SetCsWorkgroupSize(entry, 1u, 1u, 1u));
+  auto elementType = BasicType(ScalarType::eU32, components);
+  auto arrayType = Type(elementType).addArrayDimension(16u);
+  auto scratch = builder.add(Op::DclScratch(arrayType, entry));
+  auto lds = builder.add(Op::DclLds(arrayType, entry));
+  auto value = components == 1u ? builder.makeConstant(11u)
+    : builder.makeConstant(11u, 22u, 33u, 44u);
+
+  for (uint32_t i = 0u; i < 16u; i++)
+    builder.add(Op::LdsStore(lds, builder.makeConstant(i), value));
+
+  for (uint32_t i = 0u; i < 16u; i++) {
+    auto index = builder.makeConstant(i);
+    auto load = builder.add(Op::LdsLoad(elementType, lds, index));
+    builder.add(Op::ScratchStore(scratch, index, load));
+  }
+
+  if (interference == 1u) {
+    builder.add(Op::Barrier(Scope::eWorkgroup, Scope::eWorkgroup, MemoryType::eLds));
+  } else if (interference == 2u) {
+    auto replacement = components == 1u ? builder.makeConstant(101u)
+      : builder.makeConstant(101u, 102u, 103u, 104u);
+    builder.add(Op::LdsStore(lds, builder.makeConstant(3u), replacement));
+  }
+
+  auto index = builder.add(Op::Drain(ScalarType::eU32, builder.makeConstant(3u)));
+  uint32_t component = scalarLoad && components > 1u ? 2u : 0u;
+  auto loadType = scalarLoad ? BasicType(ScalarType::eU32) : elementType;
+  auto address = scalarLoad && components > 1u
+    ? builder.add(Op::CompositeConstruct(BasicType(ScalarType::eU32, 2u), index, builder.makeConstant(component)))
+    : index;
+  auto result = builder.add(Op::ScratchLoad(loadType, scratch, address));
+  builder.add(Op::Drain(loadType, result));
+  builder.add(Op::Return());
+
+  CompileOptions options;
+  options.scratchOptions.enableBoundChecking = bounds;
+  legalizeIr(builder, options);
+
+  uint32_t scratchLoads = 0u;
+  uint32_t componentMask = 0u;
+
+  for (const auto& op : builder) {
+    if (op.getOpCode() != OpCode::eScratchLoad)
+      continue;
+
+    scratchLoads++;
+    ok(op.getType() == ScalarType::eU32);
+    const auto& loadAddress = builder.getOpForOperand(op, 1u);
+    ok(loadAddress.getType() == BasicType(ScalarType::eU32, components > 1u ? 2u : 1u));
+
+    if (components > 1u && loadAddress.getOpCode() == OpCode::eCompositeConstruct) {
+      const auto& lane = builder.getOpForOperand(loadAddress, 1u);
+      ok(lane.isConstant());
+      if (lane.isConstant()) {
+        auto laneIndex = uint32_t(lane.getOperand(0u));
+        ok(laneIndex < components);
+        if (laneIndex < components)
+          componentMask |= 1u << laneIndex;
+      }
+    } else if (components == 1u) {
+      componentMask |= 1u;
+    }
+  }
+
+  /* A barrier or a later LDS store must keep the original scratch values.
+   * Otherwise the copy can be replaced with LDS reads. */
+  uint32_t expectedLoads = interference ? loadType.getVectorSize() : 0u;
+  ok(scratchLoads == expectedLoads);
+  uint32_t expectedMask = !interference ? 0u : scalarLoad
+    ? 1u << component : (1u << components) - 1u;
+  ok(componentMask == expectedMask);
+}
+
+
 void testIrScratch() {
+  for (bool bounds : { false, true }) {
+    for (uint32_t interference : { 0u, 1u, 2u }) {
+      RUN_TEST(testIrScratchLdsFallback, 1u, true, interference, bounds);
+      RUN_TEST(testIrScratchLdsFallback, 4u, false, interference, bounds);
+      RUN_TEST(testIrScratchLdsFallback, 4u, true, interference, bounds);
+    }
+  }
   RUN_TEST(testIrScratchCbvOffsets);
   RUN_TEST(testIrScratchCbvIncompleteStores);
   for (uint32_t size : { 31u, 32u, 33u, 64u }) {
