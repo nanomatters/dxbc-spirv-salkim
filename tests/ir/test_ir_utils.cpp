@@ -70,8 +70,49 @@ void testIrUtilsFloatConstants() {
   ok(float(convertConstant(Op::Constant(-123), ScalarType::eF32).getOperand(0u)) == -123.0f);
 }
 
+void testIrUtilsConstantCasts() {
+  const std::pair<ScalarType, ScalarType> types[] = {
+    { ScalarType::eU8, ScalarType::eI8 },
+    { ScalarType::eU16, ScalarType::eI16 },
+    { ScalarType::eU32, ScalarType::eI32 },
+    { ScalarType::eU64, ScalarType::eI64 },
+  };
+  for (const auto& pair : types) {
+    uint64_t sign = uint64_t(1u) << (bitWidth(pair.first) - 1u);
+    uint64_t mask = sign | (sign - 1u);
+    const uint64_t values[] = { 0u, 1u, sign - 1u, sign, mask };
+    for (uint32_t count = 1u; count <= 4u; count++) {
+      for (bool sourceSigned : { false, true }) {
+        for (bool destinationSigned : { false, true }) {
+          for (uint32_t start = 0u; start < 5u; start++) {
+            auto sourceType = sourceSigned ? pair.second : pair.first;
+            auto destinationType = destinationSigned ? pair.second : pair.first;
+            Op source(OpCode::eConstant, BasicType(sourceType, count));
+            for (uint32_t i = 0u; i < count; i++) {
+              uint64_t value = values[(start + i) % 5u];
+              if (sourceSigned && (value & sign))
+                value |= ~mask;
+              source.addOperand(value);
+            }
+            auto result = castConstant(source, BasicType(destinationType, count));
+            ok(result.getType() == BasicType(destinationType, count));
+            ok(result.getOperandCount() == count);
+            for (uint32_t i = 0u; i < count; i++) {
+              uint64_t expected = values[(start + i) % 5u];
+              if (destinationSigned && (expected & sign))
+                expected |= ~mask;
+              ok(uint64_t(result.getOperand(i)) == expected);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 void testIrUtils() {
   RUN_TEST(testIrUtilsFloatConstants);
+  RUN_TEST(testIrUtilsConstantCasts);
 }
 
 }
