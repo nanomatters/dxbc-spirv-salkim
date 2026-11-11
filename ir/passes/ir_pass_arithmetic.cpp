@@ -3544,10 +3544,47 @@ std::pair<bool, Builder::iterator> ArithmeticPass::resolveIdentitySelect(Builder
     auto c1 = m_builder.getOpForOperand(cond, 1u).getDef();
 
     if ((c0 == a.getDef() && c1 == b.getDef()) || (c0 == b.getDef() && c1 == a.getDef())) {
-      bool isEq = cond.getOpCode() == OpCode::eIEq || cond.getOpCode() == OpCode::eFEq;
+      bool canFold = true;
 
-      auto next = m_builder.rewriteDef(op->getDef(), isEq ? b.getDef() : a.getDef());
-      return std::make_pair(true, m_builder.iter(next));
+      if (cond.getOpCode() == OpCode::eFEq || cond.getOpCode() == OpCode::eFNe) {
+        /* Floating-point equality does not imply identical bits: signed zeros
+         * compare equal, as do different subnormals when inputs are flushed. */
+        auto scalar = a.getType().getBaseType(0u).getBaseType();
+        uint32_t mantissa = scalar == ScalarType::eF16 ? 10u : scalar == ScalarType::eF32 ? 23u : 52u;
+        uint64_t magnitude = (uint64_t(1u) << (bitWidth(scalar) - 1u)) - 1u;
+        uint64_t normal = uint64_t(1u) << mantissa;
+        auto isNormalOrNonfiniteConstant = [&](const Op& value) {
+          if (!value.isConstant())
+            return false;
+          for (uint32_t i = 0u; i < value.getOperandCount(); i++) {
+            if ((uint64_t(value.getOperand(i)) & magnitude) < normal)
+              return false;
+          }
+          return true;
+        };
+
+        canFold = isNormalOrNonfiniteConstant(a) || isNormalOrNonfiniteConstant(b);
+
+        auto flags = getFpFlags(*op);
+        if (!canFold && (flags & OpFlag::eNoSz) && !(flags & OpFlag::ePrecise)) {
+          bool foundMode = false;
+          bool preserveDenorms = true;
+          auto [first, last] = m_builder.getDeclarations();
+          for (auto mode = first; mode != last; mode++) {
+            if (mode->getOpCode() == OpCode::eSetFpMode && mode->getType() == scalar) {
+              foundMode = true;
+              preserveDenorms &= DenormMode(mode->getOperand(2u)) == DenormMode::ePreserve;
+            }
+          }
+          canFold = foundMode && preserveDenorms;
+        }
+      }
+
+      if (canFold) {
+        bool isEq = cond.getOpCode() == OpCode::eIEq || cond.getOpCode() == OpCode::eFEq;
+        auto next = m_builder.rewriteDef(op->getDef(), isEq ? b.getDef() : a.getDef());
+        return std::make_pair(true, m_builder.iter(next));
+      }
     }
   }
 

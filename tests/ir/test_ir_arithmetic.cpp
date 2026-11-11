@@ -281,6 +281,97 @@ void testIrArithmeticFloatCompareDenorm() {
 }
 
 
+void testIrArithmeticFloatIdentitySelect() {
+  for (auto type : { ScalarType::eF16, ScalarType::eF32, ScalarType::eF64 }) {
+    uint32_t mantissa = type == ScalarType::eF16 ? 10u : type == ScalarType::eF32 ? 23u : 52u;
+    uint64_t sign = uint64_t(1u) << (bitWidth(type) - 1u);
+    uint64_t magnitude = sign - 1u;
+    uint64_t normal = uint64_t(1u) << mantissa;
+    uint64_t infinity = sign - normal;
+    auto intType = type == ScalarType::eF16 ? ScalarType::eU16
+                 : type == ScalarType::eF32 ? ScalarType::eU32 : ScalarType::eU64;
+    const uint64_t values[] = {
+      0u, sign, 1u, sign | 1u, normal - 1u, normal, normal + 1u, infinity, infinity | 1u,
+    };
+
+    for (auto mode : { DenormMode::eFlush, DenormMode::ePreserve, DenormMode::eFlagEnum }) {
+      for (uint32_t flags = 0u; flags < 4u; flags++) {
+        for (auto code : { OpCode::eFEq, OpCode::eFNe }) {
+          for (bool reverse : { false, true }) {
+            for (bool constantOperand : { false, true }) {
+              for (auto aBits : values) {
+                for (auto bBits : values) {
+                  Builder builder;
+                  auto entry = test_api::setupTestFunction(builder, ShaderStage::eCompute);
+                  if (mode != DenormMode::eFlagEnum) {
+                    auto modeFlags = flags >= 2u ? OpFlags(OpFlag::eNoSz) : OpFlags();
+                    builder.add(Op::SetFpMode(entry, type, modeFlags, RoundMode::eNearestEven, mode));
+                  }
+                  builder.add(Op::Label());
+                  auto constant = [&](uint64_t bits) {
+                    return builder.add(Op(OpCode::eConstant, type).addOperand(bits));
+                  };
+                  auto a = builder.add(Op::Drain(type, constant(aBits)));
+                  auto b = constantOperand ? constant(bBits) : builder.add(Op::Drain(type, constant(bBits)));
+                  auto cond = builder.add(Op(code, ScalarType::eBool).addOperands(reverse ? b : a, reverse ? a : b));
+                  auto selectFlags = flags == 1u ? OpFlags(OpFlag::eNoSz)
+                                   : flags == 3u ? OpFlags(OpFlag::ePrecise) : OpFlags();
+                  auto result = builder.add(Op::Select(type, cond, a, b).setFlags(selectFlags));
+                  auto floatSink = builder.add(Op::Drain(type, result));
+                  /* Observe the selected encoding rather than another FP operation. */
+                  auto cast = builder.add(Op::Cast(intType, result));
+                  auto sink = builder.add(Op::Drain(intType, cast));
+                  builder.add(Op::Return());
+                  while (ArithmeticPass::runPass(builder, { })) { }
+
+                  /* Evaluate comparisons with the shader's denormal mode and retain
+                   * the original operand bits across selects and bitcasts. */
+                  auto equal = [&](uint64_t x, uint64_t y) {
+                    if ((x & magnitude) > infinity || (y & magnitude) > infinity)
+                      return false;
+                    if (!(x & magnitude) || (mode != DenormMode::ePreserve && (x & magnitude) < normal))
+                      x = 0u;
+                    if (!(y & magnitude) || (mode != DenormMode::ePreserve && (y & magnitude) < normal))
+                      y = 0u;
+                    return x == y;
+                  };
+                  auto evaluate = [&](const auto& self, SsaDef def) -> uint64_t {
+                    const auto& op = builder.getOp(def);
+                    auto arg = [&](uint32_t i) { return self(self, SsaDef(op.getOperand(i))); };
+                    switch (op.getOpCode()) {
+                      case OpCode::eConstant: return uint64_t(op.getOperand(0u));
+                      case OpCode::eDrain:
+                      case OpCode::eCast: return arg(0u);
+                      case OpCode::eFEq: return equal(arg(0u), arg(1u));
+                      case OpCode::eFNe: return !equal(arg(0u), arg(1u));
+                      case OpCode::eSelect: return arg(arg(0u) ? 1u : 2u);
+                      default: ok(false); return 0u;
+                    }
+                  };
+                  bool isEqual = equal(aBits, bBits);
+                  auto expected = isEqual == (code == OpCode::eFEq) ? aBits : bBits;
+                  auto actual = evaluate(evaluate, sink);
+                  bool noSignedZero = flags == 1u || (flags == 2u && mode != DenormMode::eFlagEnum);
+                  ok(noSignedZero && !(expected & magnitude) ? !(actual & magnitude) : actual == expected);
+
+                  bool fold = (constantOperand && (bBits & magnitude) >= normal)
+                           || (noSignedZero && mode == DenormMode::ePreserve);
+                  const auto& folded = builder.getOpForOperand(builder.getOp(floatSink), 0u);
+                  /* Constant -0 may become +0 in the comparison, which no
+                   * longer matches this SSA identity even when folding is safe. */
+                  if (!fold || !constantOperand || bBits != sign)
+                    ok((folded.getOpCode() != OpCode::eSelect) == fold);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+
 void testIrArithmeticTruncPattern() {
   for (bool useAnd : { false, true }) {
     for (bool reversed : { false, true }) {
@@ -414,6 +505,7 @@ void testIrArithmetic() {
   RUN_TEST(testIrArithmeticBitExtractBounds);
   RUN_TEST(testIrArithmeticInvalidBitRanges);
   RUN_TEST(testIrArithmeticFloatCompareDenorm);
+  RUN_TEST(testIrArithmeticFloatIdentitySelect);
   RUN_TEST(testIrArithmeticTruncPattern);
   RUN_TEST(testIrArithmeticPackedFloatIdentity);
   RUN_TEST(testIrArithmeticIntegerIdentity);
