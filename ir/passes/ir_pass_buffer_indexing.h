@@ -34,7 +34,7 @@ private:
   struct LoadInfo {
     SsaDef    selectOp      = {};
     SsaDef    selectArg     = {};
-    SsaDef    castOp        = {};
+    bool      canExtract    = true;
     SsaDef    extractOp     = {};
   };
 

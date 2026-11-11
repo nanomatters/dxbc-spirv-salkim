@@ -237,12 +237,22 @@ void BufferIndexingPass::getLoadSelectInfos(SsaDef def, LoadInfo base, small_vec
 
       case OpCode::eCast: {
         LoadInfo nested = base;
-        nested.castOp = use->getDef();
+        auto srcType = m_builder.getOp(def).getType();
+        auto dstType = use->getType();
+
+        /* Extraction can only move across casts that preserve component
+         * boundaries. A cast from u32 to u16x2 changes what index 1 means. */
+        nested.canExtract &= srcType.isBasicType() && dstType.isBasicType()
+          && srcType.getBaseType(0u).getVectorSize() == dstType.getBaseType(0u).getVectorSize()
+          && srcType.byteSize() == dstType.byteSize();
 
         getLoadSelectInfos(use->getDef(), nested, loads);
       } break;
 
       case OpCode::eCompositeExtract: {
+        if (!base.canExtract || base.extractOp)
+          break;
+
         LoadInfo nested = base;
         nested.extractOp = use->getDef();
 
