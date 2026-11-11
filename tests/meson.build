@@ -5,6 +5,7 @@ test_files = [
 
   'ir/test_ir_arithmetic.cpp',
   'ir/test_ir_builder.cpp',
+  'ir/test_ir_buffer_indexing.cpp',
   'ir/test_ir_cse.cpp',
   'ir/test_ir_conditions.cpp',
   'ir/test_ir_dominance.cpp',
