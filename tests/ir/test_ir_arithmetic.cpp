@@ -488,6 +488,42 @@ void testIrArithmeticPackedFloatIdentity() {
 }
 
 
+void testIrArithmeticFindMsbSelect() {
+  for (auto type : { ScalarType::eU32, ScalarType::eI32, ScalarType::eF32 }) {
+    for (bool equal : { false, true }) {
+      Builder builder;
+      test_api::setupTestFunction(builder, ShaderStage::eCompute);
+      builder.add(Op::Label());
+      auto input = builder.add(Op::Drain(ScalarType::eU32, builder.makeConstant(0u)));
+      auto msb = builder.add(Op::UFindMsb(ScalarType::eU32, input));
+      auto value = type == ScalarType::eU32 ? msb : builder.add(Op::Cast(type, msb));
+      auto zero = builder.makeConstant(0u);
+      auto cond = builder.add(Op(equal ? OpCode::eIEq : OpCode::eINe, ScalarType::eBool)
+        .addOperands(input, zero));
+      auto fallback = type == ScalarType::eF32 ? builder.makeConstant(-1.0f)
+                    : type == ScalarType::eI32 ? builder.makeConstant(-1) : builder.makeConstant(~0u);
+      auto select = builder.add(Op::Select(type, cond, equal ? fallback : value, equal ? value : fallback));
+      auto sink = builder.add(Op::Drain(type, select));
+      builder.add(Op::Return());
+
+      while (ArithmeticPass::runPass(builder, { })) { }
+      const auto& result = builder.getOpForOperand(sink, 0u);
+      ok((result.getOpCode() == OpCode::eSelect) == (type == ScalarType::eF32));
+
+      /* For zero, FindUMsb returns the all-ones bit pattern. A float
+       * fallback of -1.0 has a different representation. */
+      builder.rewriteDef(msb, builder.makeConstant(~0u));
+      builder.rewriteDef(input, zero);
+      while (ArithmeticPass::runPass(builder, { })) { }
+      const auto& folded = builder.getOpForOperand(sink, 0u);
+      ok(folded.isConstant());
+      if (folded.isConstant())
+        ok(uint32_t(folded.getOperand(0u)) == (type == ScalarType::eF32 ? 0xbf800000u : ~0u));
+    }
+  }
+}
+
+
 void testIrArithmetic() {
   /* Matching selects, non-select on either side, mismatched conditions,
    * shared selects, and shared selects with a constant branch. */
@@ -502,6 +538,7 @@ void testIrArithmetic() {
   RUN_TEST(testIrArithmeticTruncPattern);
   RUN_TEST(testIrArithmeticPackedFloatIdentity);
   RUN_TEST(testIrArithmeticIntegerIdentity);
+  RUN_TEST(testIrArithmeticFindMsbSelect);
 }
 
 }

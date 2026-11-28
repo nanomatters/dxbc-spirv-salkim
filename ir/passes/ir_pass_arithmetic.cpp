@@ -3554,7 +3554,8 @@ std::pair<bool, Builder::iterator> ArithmeticPass::resolveIdentitySelect(Builder
 
   /* select(x != 0, ufindmsb(x), -1) -> ufindmsb(x)
    * select(x == 0, -1, ufindmsb(x)) -> ufindmsb(x) */
-  if (isConstantValue(a, -1) || isConstantValue(b, -1)) {
+  if (op->getType().getBaseType(0u).isIntType()
+   && (isConstantValue(a, -1) || isConstantValue(b, -1))) {
     const auto& msbOp = isConstantValue(a, -1) ? b : a;
     auto compareOp = isConstantValue(a, -1) ? OpCode::eIEq : OpCode::eINe;
 
