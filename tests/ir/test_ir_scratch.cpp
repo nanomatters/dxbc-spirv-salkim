@@ -277,7 +277,34 @@ void testIrScratchLdsOverlappingStores(bool overlap) {
 }
 
 
+void testIrScratchLdsStoreExtent() {
+  Builder builder;
+  auto entry = test_api::setupTestFunction(builder, ShaderStage::eCompute);
+  builder.add(Op::SetCsWorkgroupSize(entry, 1u, 1u, 1u));
+  auto scratch = builder.add(Op::DclScratch(Type(ScalarType::eU32).addArrayDimension(2u), entry));
+  auto lds = builder.add(Op::DclLds(Type(ScalarType::eU32).addArrayDimension(3u), entry));
+  builder.add(Op::Label());
+
+  /* The source is larger than the destination. Leave bounds handling to
+   * the normal scratch path when a copy goes beyond the declared array. */
+  for (uint32_t i = 0u; i < 3u; i++) {
+    auto index = builder.makeConstant(i);
+    auto value = builder.add(Op::LdsLoad(ScalarType::eU32, lds, index));
+    builder.add(Op::ScratchStore(scratch, index, value));
+  }
+
+  auto index = builder.add(Op::Drain(ScalarType::eU32, builder.makeConstant(1u)));
+  auto result = builder.add(Op::ScratchLoad(ScalarType::eU32, scratch, index));
+  builder.add(Op::Drain(ScalarType::eU32, result));
+  builder.add(Op::Return());
+
+  ok(!CleanupScratchPass::runResolveCbvToScratchCopyPass(builder, { }));
+  ok(builder.getOp(result).getOpCode() == OpCode::eScratchLoad);
+}
+
+
 void testIrScratch() {
+  RUN_TEST(testIrScratchLdsStoreExtent);
   RUN_TEST(testIrScratchLdsOverlappingStores, false);
   RUN_TEST(testIrScratchLdsOverlappingStores, true);
   for (bool bounds : { false, true }) {

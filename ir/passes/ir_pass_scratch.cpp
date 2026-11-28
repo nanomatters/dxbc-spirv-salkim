@@ -481,6 +481,9 @@ bool CleanupScratchPass::promoteScratchLdsCopy(SsaDef def) {
 
       for (uint32_t i = 0u; i < index.getOperandCount(); i++) {
         auto member = uint32_t(index.getOperand(i));
+        if (member >= type.computeTopLevelMemberCount())
+          return false;
+
         scalarIndex += type.computeScalarIndex(member);
         type = type.getSubType(member);
       }
