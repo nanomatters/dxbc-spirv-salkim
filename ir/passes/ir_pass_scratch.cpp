@@ -488,6 +488,9 @@ bool CleanupScratchPass::promoteScratchLdsCopy(SsaDef def) {
         type = type.getSubType(member);
       }
 
+      if (scalarCount > type.computeFlattenedScalarCount())
+        return false;
+
       for (uint32_t i = 0; i < scalarCount; i++) {
         auto& load = ldsLoads.at(scalarIndex + i);
         if (load.first)

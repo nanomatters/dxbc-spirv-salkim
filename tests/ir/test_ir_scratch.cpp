@@ -303,8 +303,33 @@ void testIrScratchLdsStoreExtent() {
 }
 
 
+void testIrScratchLdsStoreWidth(uint32_t component) {
+  Builder builder;
+  auto entry = test_api::setupTestFunction(builder, ShaderStage::eCompute);
+  builder.add(Op::SetCsWorkgroupSize(entry, 1u, 1u, 1u));
+  auto pairType = BasicType(ScalarType::eU32, 2u);
+  auto arrayType = Type(pairType).addArrayDimension(1u);
+  auto scratch = builder.add(Op::DclScratch(arrayType, entry));
+  auto lds = builder.add(Op::DclLds(arrayType, entry));
+  builder.add(Op::Label());
+
+  /* The address selects one component, but the store supplies the whole pair. */
+  auto lane = builder.makeConstant(0u, component);
+  auto pair = builder.add(Op::LdsLoad(pairType, lds, builder.makeConstant(0u)));
+  builder.add(Op::ScratchStore(scratch, lane, pair));
+  auto result = builder.add(Op::ScratchLoad(ScalarType::eU32, scratch, lane));
+  auto use = builder.add(Op::Drain(ScalarType::eU32, result));
+  builder.add(Op::Return());
+
+  ok(!CleanupScratchPass::runResolveCbvToScratchCopyPass(builder, { }));
+  ok(builder.getOpForOperand(builder.getOp(use), 0u).getDef() == result);
+}
+
+
 void testIrScratch() {
   RUN_TEST(testIrScratchLdsStoreExtent);
+  RUN_TEST(testIrScratchLdsStoreWidth, 0u);
+  RUN_TEST(testIrScratchLdsStoreWidth, 1u);
   RUN_TEST(testIrScratchLdsOverlappingStores, false);
   RUN_TEST(testIrScratchLdsOverlappingStores, true);
   for (bool bounds : { false, true }) {
