@@ -486,8 +486,11 @@ bool CleanupScratchPass::promoteScratchLdsCopy(SsaDef def) {
       }
 
       for (uint32_t i = 0; i < scalarCount; i++) {
-        ldsLoads.at(scalarIndex + i) = std::make_pair(
-          value.getDef(), scalarCount > 1 ? i : ~0u);
+        auto& load = ldsLoads.at(scalarIndex + i);
+        if (load.first)
+          return false;
+
+        load = std::make_pair(value.getDef(), scalarCount > 1 ? i : ~0u);
       }
     }
   }

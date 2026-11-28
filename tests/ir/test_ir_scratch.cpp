@@ -236,7 +236,50 @@ void testIrScratchLdsFallback(uint32_t components, bool scalarLoad, uint32_t int
 }
 
 
+void testIrScratchLdsOverlappingStores(bool overlap) {
+  Builder builder;
+  auto entry = test_api::setupTestFunction(builder, ShaderStage::eCompute);
+  builder.add(Op::SetCsWorkgroupSize(entry, 1u, 1u, 1u));
+  auto scratch = builder.add(Op::DclScratch(Type(ScalarType::eU32).addArrayDimension(2u), entry));
+  auto lds = builder.add(Op::DclLds(Type(ScalarType::eU32, 2u).addArrayDimension(2u), entry));
+  builder.add(Op::Label());
+
+  for (uint32_t i = 0u; i < 2u; i++)
+    builder.add(Op::LdsStore(lds, builder.makeConstant(i), builder.makeConstant(11u + i, 22u + i)));
+
+  for (uint32_t i = 0u; i < 2u; i++) {
+    auto lane0 = builder.add(Op::LdsLoad(ScalarType::eU32, lds, builder.makeConstant(i, 0u)));
+    auto lane1 = builder.add(Op::LdsLoad(ScalarType::eU32, lds, builder.makeConstant(i, 1u)));
+    auto index = builder.makeConstant(i);
+    auto last = builder.add(Op::ScratchStore(scratch, index, lane1));
+
+    /* Lane 1 is the final write even if the earlier store was created last. */
+    if (overlap)
+      builder.addBefore(last, Op::ScratchStore(scratch, index, lane0));
+  }
+
+  auto index = builder.add(Op::Drain(ScalarType::eU32, builder.makeConstant(1u)));
+  auto result = builder.add(Op::ScratchLoad(ScalarType::eU32, scratch, index));
+  builder.add(Op::Drain(ScalarType::eU32, result));
+  builder.add(Op::Return());
+
+  bool promoted = CleanupScratchPass::runResolveCbvToScratchCopyPass(builder, { });
+  ok(promoted == !overlap);
+  if (promoted) {
+    for (const auto& op : builder) {
+      if (op.getOpCode() == OpCode::eLdsLoad) {
+        const auto& addr = builder.getOpForOperand(op, 1u);
+        if (addr.getOpCode() == OpCode::eCompositeConstruct)
+          ok(uint32_t(builder.getOpForOperand(addr, 1u).getOperand(0u)) == 1u);
+      }
+    }
+  }
+}
+
+
 void testIrScratch() {
+  RUN_TEST(testIrScratchLdsOverlappingStores, false);
+  RUN_TEST(testIrScratchLdsOverlappingStores, true);
   for (bool bounds : { false, true }) {
     for (uint32_t interference : { 0u, 1u, 2u }) {
       RUN_TEST(testIrScratchLdsFallback, 1u, true, interference, bounds);
